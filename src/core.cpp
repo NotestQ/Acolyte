@@ -69,8 +69,6 @@ DWORD WINAPI init() {
             for (const auto& dll : fs::directory_iterator(manifest.manifest_path.parent_path())) {
                 if (dll.path().extension() == ".dll")
                     LoadLibraryA(dll.path().string().c_str());
-                else
-                    mainLogger.LogDebug("Didn't find any .dll to load for " + manifest.name);
             }
         }
         mainLogger.Log("Mods loaded, have fun!");
