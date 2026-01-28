@@ -1,5 +1,5 @@
 #pragma once
-#include <Acolyte/vagante.h>
+#include <Vagante/entities.h>
 #include <Acolyte/exports.h>
 #include <sigslot/signal.hpp>
 

@@ -1,3 +1,6 @@
+#pragma once
+#include <vector>
+
 // Definitions from SFML. Someone smarter than me can likely include SFML in the project? Maybe?
 typedef unsigned int uint;
 typedef unsigned __int64 ulong64;
@@ -70,7 +73,7 @@ namespace sf {
     };
 
     struct Sprite {
-        char padding[172]; // Likely vtable stuff
+        char padding[172];
         Vertex m_vertices[4];
         Texture* m_texture;
         Rect<int> m_textureRect;

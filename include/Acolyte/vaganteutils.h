@@ -1,6 +1,8 @@
 #pragma once
-#include <Acolyte/vagante.h>
+#include <Vagante/sfml.h>
 #include <Acolyte/exports.h>
+#include <unordered_map>
+#include <string>
 
 struct TextureData {
 	sf::Texture texture{};

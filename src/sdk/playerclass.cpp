@@ -274,7 +274,7 @@ namespace sdk::PlayerClass {
     }
     
     std::optional<const ModdedClass*> GetByModdedIndex(int moddedIndex) {
-        if (moddedIndex >= 0 && moddedIndex < ModdedClassList.size()) {
+        if (moddedIndex >= 0 && (uint)moddedIndex < ModdedClassList.size()) {
             return &ModdedClassMap[ModdedClassList[moddedIndex]];
         }
         return std::nullopt;

@@ -1,4 +1,5 @@
-#include <Acolyte/vagante.h>
+#include <Vagante/items.h>
+#include <Vagante/entities.h>
 #include <Acolyte/logger.h>
 #include <Acolyte/utils.h>
 #include <Acolyte/item.h>

@@ -2,7 +2,7 @@
 #include <Acolyte/utils.h>
 #include <Acolyte/logger.h>
 #include <Acolyte/player.h>
-#include <Acolyte/vagante.h>
+#include <Vagante/entities.h>
 #include <sdk_registry.h>
 #include <safetyhook.hpp>
 

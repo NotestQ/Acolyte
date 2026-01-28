@@ -1,0 +1,15 @@
+#pragma once
+#include <memory>
+
+struct Entity;
+struct Unit;
+struct Player;
+struct ManEatingPlant;
+struct Projectile;
+struct SpecialEffect;
+struct SpellEntity;
+struct ManaOrb;
+struct Floater;
+struct Wisp;
+struct Weapon;
+struct Item;

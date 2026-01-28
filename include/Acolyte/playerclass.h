@@ -1,5 +1,5 @@
 #pragma once
-#include "vagante.h"
+#include "Vagante/entities.h"
 #include <Acolyte/exports.h>
 #include <string>
 #include <optional>
@@ -16,7 +16,7 @@ struct ModdedClass {
     std::filesystem::path mod_path;
     bool _debugUseFallbackWeapon = false;
     std::string gfxPathStorage;
-    const char* gfxPath;
+    const char* gfxPath{};
 };
 
 static std::vector<std::string> PlayerClassList{ // Full base class list without enum trickery, index -> string
