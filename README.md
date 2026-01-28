@@ -13,7 +13,7 @@ Given that, it is *obviously* a good starting point for ~~masochists~~ experienc
 > 
 > Back up your original savedata.sav in multiple places.
 
-1. Download the latest release for Windows, version.dll
+1. Download the [latest release](https://github.com/NotestQ/Acolyte/releases), version.dll
 2. Move version.dll into the game directory. You can navigate to the game's directory by right-clicking the game in Steam, hovering "Manage", and selecting "Browse local files".
 3. Launch the game once to generate the Acolyte/ directory.
 4. Put mod directories in Acolyte/mods
