@@ -1,8 +1,11 @@
 #pragma once
-#include "exports.h"
+#include <Acolyte/exports.h>
+#include <Acolyte/logger.h>
+#include <Windows.h>
 #include <string>
 #include <optional>
-#include <Windows.h>
+#include <vector>
+#include <any>
 
 namespace Utils {
 	ACOLYTE_API void CreateHook(LPVOID pTarget, LPVOID pDetour, LPVOID* ppOriginal);

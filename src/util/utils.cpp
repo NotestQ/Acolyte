@@ -1,8 +1,7 @@
 // General utils not specifically Vagante related
 #include <Acolyte/utils.h>
-#include "MinHook.h"
-#include <vector>
-#include <Acolyte/logger.h>
+#include <MinHook.h>
+#include <stacktrace>
 
 static Logger utilsLogger("Acolyte");
 

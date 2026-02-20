@@ -17,7 +17,9 @@ void drawCustomizeMenuFrameDetour(SafetyHookContext& ctx) {
     int selectionWrap = *reinterpret_cast<int*>(ctx.esi + 0x33C8);
 
     int playerClassIndex = playerClassVector.at(selectionWrap);
-    if (playerClassIndex == 6) playerClassIndex = 5;
+    // Corrects text.png wrapping, player class 6 (random) will always be at the fifth position
+    // 8 and above will always be two behind
+    if (playerClassIndex == 6) playerClassIndex = 5; 
     else if (playerClassIndex > 5) playerClassIndex -= 2;
 
     uint32_t* pushedFramePtr = reinterpret_cast<uint32_t*>(ctx.esp);
@@ -25,19 +27,16 @@ void drawCustomizeMenuFrameDetour(SafetyHookContext& ctx) {
 }
 
 void classNameSwitchDetour(SafetyHookContext& ctx) {
-    int selectedClass = static_cast<int>(ctx.eax) - 8;
-    if (selectedClass < 0)
+    int classIndex = static_cast<int>(ctx.eax);
+    auto moddedClass = sdk::PlayerClass::GetByIndex(classIndex);
+    if (!moddedClass)
         return;
-    try {
-        playerClassLogger.LogDebug(std::to_string(selectedClass));
-        std::string replacement = ModdedClassList.at(selectedClass);
 
-        std::string* local = reinterpret_cast<std::string*>(ctx.ebp - 0x5c);
-        *local = std::string(replacement);
-    }
-    catch (const std::out_of_range& err) {
-        playerClassLogger.LogError("Error in class name switch detour: ", err.what());
-    }
+    std::string replacement = (*moddedClass)->name;
+
+    std::string* local = reinterpret_cast<std::string*>(ctx.ebp - 0x5c);
+    *local = replacement;
+
     // Midhooks are trampolines, so they preserve the original instruction
     // We increase the instruction pointer by the amount of bytes in the original instruction to skip it
     ctx.eip = ctx.eip + 5;
@@ -77,14 +76,12 @@ void setStartingItemDetour(SafetyHookContext& ctx) {
 sdk::PlayerClass::GetClassNameFn pOriginalGetClassName = nullptr;
 std::string* __fastcall getClassNameDetour(std::string* returnStoragePtr, int classIndex) {
     auto ret = pOriginalGetClassName(returnStoragePtr, classIndex);
-    try {
-        playerClassLogger.LogDebug(std::to_string(classIndex - 8));
-        std::string replacement = ModdedClassList.at(classIndex - 8);
-        ret->assign(replacement);
-    }
-    catch (const std::out_of_range& err) {
-        playerClassLogger.LogError("Error in class name switch detour: ", err.what());
-    }
+    auto moddedClass = sdk::PlayerClass::GetByIndex(classIndex);
+    if (!moddedClass)
+        return ret;
+
+    std::string replacement = (*moddedClass)->name;
+    ret->assign(replacement);
     return ret;
 }
 

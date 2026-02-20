@@ -5,8 +5,9 @@
 #include <Vagante/enums.h>
 #include <Vagante/stage.h>
 #include <Vagante/forward.h>
-#include <Vagante/sprite.h>
+#include <Vagante/graphic.h>
 #include <Vagante/audio.h>
+#include <Vagante/misc.h>
 #include <map>
 #include <string>
 #include <vector>
@@ -15,6 +16,7 @@
 
 #pragma warning(push)
 #pragma warning(disable: 4624) // destructor was implicitly defined as deleted
+#pragma warning(disable: 26495) // always initialize a member variable
 
 struct EntityHandlerInterface {
     uint entityHandlerVectorIndex;
@@ -52,12 +54,7 @@ struct EntityState {
     std::shared_ptr<Entity> entity;
 };
 
-struct alignas(8) Entity {
-    void* vtable; // 0x0 is "always" the vtable but since this is the top-most object we only need to define it here
-    int _padding;
-    std::enable_shared_from_this<Entity> enabled_shared_from_this;
-    EntityHandlerInterface entityHandlerInterface;
-    SpriteEntityInterface spriteEntityInterface;
+struct alignas(8) Entity: public paddedVtable, public std::enable_shared_from_this<Entity>, public EntityHandlerInterface, public SpriteEntityInterface {
     EntityType type;
     EntityState entityState;
     bool networked;
@@ -307,6 +304,45 @@ struct alignas(8) ManaOrb {
     char padding[0x3a8];
 };
 
+struct Doodad : public Unit {
+    DoodadType doodadType;
+    int crateType;
+    bool doAnimation;
+    bool dark;
+    bool explosiveEgg;
+    Sprite* sprite;
+    Sprite* spriteMask;
+    Sprite* secondarySprite;
+    bool isTorchLit;
+    int shakeTimer;
+    int entranceCloseDelayTimer;
+    float telepathyEffect;
+    float rotation;
+    float prevDx;
+    float prevLandedY;
+    uint damageVelocityFrames;
+    uint lifeTimer;
+    uint lifeTime;
+    std::set<std::shared_ptr<Entity>> damageSpawnedOn;
+    float prevVMag;
+    ParticlePool* particlePool;
+    std::shared_ptr<Item> heldItem;
+    uint wiggleTimer;
+    uint wiggleTime;
+    float netTelepathyOwner;
+    std::set<std::shared_ptr<Unit>> clientSideHitUnits;
+    ExitType exitType;
+    bool hasStepped;
+    std::vector<HalloweenEventLocations> halloweenEventLocationsBackground;
+    std::vector<HalloweenEventLocations> halloweenEventLocations;
+    std::vector<EntityType> halloweenEventMobTypes;
+    int halloweenSeed;
+    uint frame;
+    uint halloweenSpawnActivationFrames;
+    uint halloweenSpawnCount;
+    bool touchingPlayer;
+};
+
 struct alignas(8) ManEatingPlant {
     char padding[0xbe8];
 };
@@ -323,9 +359,19 @@ struct SpeechBubble : public Entity {
     int fadeInTimer;
 };
 
-struct HoverText; // 4 conflicts
+struct CharacterInfo {
+    int	x;
+    int	y;
+    int	w;
+    int	h;
+};
+
 struct VFont {
-    char padding[0x34];
+    bool loaded;
+    std::vector<CharacterInfo> characters;
+    int characterHeight;
+    int wBias;
+    sf::Texture* texture;
 };
 
 struct Bonfire: Entity {
@@ -380,66 +426,6 @@ struct Sign;
 struct Thief;
 struct Monster;
 struct Platform;
-
-struct DamageEventMeta {
-    int	damageAmount;
-    DamageType type;
-    bool critical;
-    short _padding;
-    std::shared_ptr<Entity> source;
-    std::shared_ptr<Entity> instigator;
-};
-struct NetHurtEvent {
-    int	damage;
-    DamageType damageType;
-    bool critical;
-    int	sourceNetId;
-    int	instigatorNetId;
-};
-struct NetReflectBlockEvent {
-    int sourceUnitNetId;
-    DamageEventMeta meta;
-};
-struct NetTeleportEvent {
-    sf::Vector2<float> from;
-    sf::Vector2<float> to;
-    bool teleFrag;
-};
-struct NetChaosEvent {
-    float castStrength;
-    int luckModifier;
-};
-struct NetModSpaceTimeEvent {
-    bool value;
-    sf::Vector2<float> playerPosition;
-};
-struct InterpInformation {
-    float x;
-    float y;
-    float dx;
-    float dy;
-    uint flags;
-    uint flags2;
-    uint flags3;
-    uint flags4;
-    uint flags5;
-    uint flags6;
-    int frames;
-};
-struct WeaponNetSwingMeta {
-    int parentItemNetId;
-    bool rodCanOvercharge;
-    bool swordPogo;
-    bool swordOverheadSwing;
-    bool daggerThrown;
-    bool cqcUppercut;
-    bool cqcDown;
-    bool isPummeling;
-    bool facingLeft;
-    bool projectileReloaded;
-    bool swordSpin;
-    bool godFist;
-};
 
 struct Affinity;
 struct Skill;
@@ -578,11 +564,11 @@ struct Player: public Unit {
     bool playerActive;
     bool clientActivatedShop;
     uint showItemCountTimer;
-    PlayerClass playerClass;
+    uint playerClass;
     bool randomizedClass;
     bool canGrapple;
-    short _padding;
-    std::vector<bool> hasRuneOrb;
+    short padding; // Also don't know if this should be here, but we need to pad for isSkeleton.
+    /*std::vector<bool>*/char hasRuneOrb[16]; // TODO: Downgrade MSVC or make a helper to deal with this
     uchar playerIndex;
     int palette;
     bool disconnected;
@@ -590,7 +576,7 @@ struct Player: public Unit {
     bool netLastReviveHadEffects;
     bool netIsDead;
     std::vector<std::pair<int, bool>> netItemsTryDrop;
-    std::vector<int> netItemsTryPickUp;
+    std::vector<std::tuple<int, bool, bool>> netItemsTryPickUp;
     std::vector<std::pair<int, int>> netItemsTryUse;
     std::vector<int> netShopTryBuy;
     std::vector<std::pair<std::pair<int, int>, int>> netAffinityLevelUp;
@@ -695,6 +681,7 @@ struct Player: public Unit {
     bool superJump;
     bool didSuperJump;
     int haveWalkChargeDamage;
+    bool chaoticElecLance;
     bool rageVictory;
     int touchingWebFrames;
     int lightRadius;
@@ -714,9 +701,7 @@ struct Player: public Unit {
     int cursedSuperSpeed;
     bool onWall;
     AffinityAttributes attributes;
-    bool didWallJump;
-    int canGrabWalls;
-    int cursedGrabWalls;
+    bool didWallJump; // Unsure if this should be here, but we need some padding before cursedGodBlessing
     int throwsHard;
     int throwsWeak;
     int goldCollector;
@@ -816,10 +801,7 @@ struct Player: public Unit {
     float weaponManaCostModifier;
     int wandBonusDamage;
     uint lookUpFrames;
-    int holyLightFrames;
     bool prevLookingUp;
-    bool holyLightActive;
-    bool holyFinalAttackActive;
     int canUseManaOrbs;
     float weaponSizeModifier;
     int canControlWandActivation;
@@ -864,7 +846,6 @@ struct Player: public Unit {
     // Technically there's a second value on the set but it's an undefined struct
     std::set<sf::Vector2<int>> attemptedWallMeatLocations;
     bool clientHolyNoFallDamageEvent;
-    short __padding;
     std::set<std::shared_ptr<Unit>> teleFraggedUnits;
     std::shared_ptr<HoverText> attachedHoverText;
     std::shared_ptr<PlayerMenu> playerMenu;
@@ -926,7 +907,7 @@ struct Player: public Unit {
     Sprite holdThrowLaunchSprite;
     Sprite holdWalkSprite;
     Sprite holdWalkSlowSprite;
-    VFont tinyFont;
+    VFont* tinyFont;
     Sprite stopWatchSprite;
     Sprite auraSprite;
     Sprite castTargetSprite;
@@ -1059,7 +1040,6 @@ struct Player: public Unit {
     std::shared_ptr<Thief> touchingThiefNPC;
     float pummelBonusDamage;
     bool holdingMeleeAttack;
-    short ___padding;
     std::set<std::shared_ptr<Unit>> hitUnits;
     std::vector<std::shared_ptr<Entity>> landedOnBoulders;
     std::vector<std::shared_ptr<Monster>> summonedMonsters;
@@ -1071,6 +1051,7 @@ struct Player: public Unit {
     bool serverPreparedDivineWeapon;
     bool serverPreparedGodFist;
     bool netWeaponSwingCancelled;
+    int swordSpinFrames;
     float spriteRotationDegrees;
     float meleeAttackTurnStrength;
     uint clientPummelCount;
@@ -1078,7 +1059,7 @@ struct Player: public Unit {
     std::vector<sf::Vector2<float>> godfistEffectOffsets;
     float clientSideGodFistEffectProgress;
     float attacksPerSecond;
-    std::vector<bool> attackHistoryBuffer;
+    /*std::vector<bool>*/char attackHistoryBuffer[16];
     int outOfCombatFrames;
 };
 

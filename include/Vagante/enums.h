@@ -105,6 +105,18 @@ enum BackgroundType {
     NUM_BACKGROUNDS = 32
 };
 
+// _STAT appended to avoid collision with INT
+enum PlayerStat {
+    STR_STAT = 0,
+    DEX_STAT = 1,
+    VIT_STAT = 2,
+    SPD_STAT = 3,
+    STA_STAT = 4,
+    INT_STAT = 5,
+    LUK_STAT = 6,
+    NUM_PLAYER_STATS = 7,
+};
+
 enum PlayerClass {
     CLASS_KNIGHT = 0,
     CLASS_ROGUE = 1,
@@ -116,7 +128,7 @@ enum PlayerClass {
     NUM_PLAYER_CLASSES = 7
 };
 
-enum PlayerEmote {
+enum PlayerEmote : unsigned char {
     EMOTE_HAPPY = 0,
     EMOTE_ANGRY = 1,
     EMOTE_SAD = 2,
@@ -285,6 +297,7 @@ enum FairyType {
     DEMON = 2,
     ANGEL = 3,
 };
+
 enum BubbleType {
     CASH = 0,
     ANGRY = 1,
@@ -590,6 +603,35 @@ enum ItemType {
     ITEMTYPE_UNKNOWN = 0xe8,
 };
 
+enum ItemPoolType {
+    POOL_HELMETS = 0,
+    POOL_CHEST_ARMOR = 1,
+    POOL_GLOVES = 2,
+    POOL_BOOTS = 3,
+    POOL_RINGS = 4,
+    POOL_AMULETS = 5,
+    POOL_ARMOR = 6,
+    POOL_DAGGERS = 7,
+    POOL_SWORDS = 8,
+    POOL_CLUBS = 9,
+    POOL_BOWS = 10,
+    POOL_WANDS = 11,
+    POOL_RODS = 12,
+    POOL_FIST = 13,
+    POOL_AXES = 14,
+    POOL_WEAPONS = 15,
+    POOL_EQUIPMENT = 16,
+    POOL_POTIONS_GOOD = 17,
+    POOL_POTIONS_BAD = 18,
+    POOL_POTIONS = 19,
+    POOL_SCROLLS = 20,
+    POOL_BOOKS = 21,
+    POOL_OTHER = 22,
+    POOL_CHEST = 23,
+    POOL_SHOP = 24,
+    POOL_ALL = 25,
+};
+
 enum AttributeType {
     ATTRIBUTE_PRIMARY_BEGIN = 0x0,
     ATTRIBUTE_LIFE_STEAL = 0x1,
@@ -706,4 +748,158 @@ enum EffectCueType: unsigned char {
     SFX = 2,
     ACTIVATE_WAND = 3,
     GENERATE_SHOCKWAVES = 4,
+};
+
+enum DoodadType {
+    DOODAD_STREAM = 0,
+    DOODAD_SHOP_COUNTER = 1,
+    DOODAD_SHOP_SIGN = 2,
+    DOODAD_TORCH = 3,
+    DOODAD_HELMET = 4,
+    DOODAD_SHIELD = 5,
+    DOODAD_ENTRANCE = 6,
+    DOODAD_EXIT = 7,
+    DOODAD_EXIT_BRANCH = 8,
+    DOODAD_POSTER = 9,
+    DOODAD_ALTAR = 10,
+    DOODAD_RAGE_VICTORY = 11,
+    DOODAD_RAGE_JUMPCHECK = 12,
+    DOODAD_FLOWER_1 = 13,
+    DOODAD_BOOK_PEDESTAL = 14,
+    DOODAD_BOSS_TROPHY = 15,
+    DOODAD_CRATE = 16,
+    DOODAD_BARREL = 17,
+    DOODAD_DUMMY = 18,
+    DOODAD_WATERFALL_2 = 19,
+    DOODAD_WATERFALL_3 = 20,
+    DOODAD_WATERFALL_4 = 21,
+    NUM_PLACEABLE_DOODAD_TYPES = 22,
+    DOODAD_TREE = 23,
+    DOODAD_LASTBOSS_CORPSE_BG = 24,
+    DOODAD_LASTBOSS_DEATH_ANGELS_BG = 25,
+    DOODAD_WOODEN_BAR = 26,
+    DOODAD_SIGN_POST = 27,
+    DOODAD_ITEM_PEDESTAL = 28,
+    DOODAD_BROOD_SPAWN_EGG = 29,
+    DOODAD_HALLOWEEN_EVENT_SPAWN = 30,
+    DOODAD_UNKNOWN = 31,
+};
+
+enum ExitType {
+    NORMAL = 0,
+    BRANCH2_TO_CATACOMBS = 1,
+    BRANCH4_TO_END = 2,
+};
+
+enum HalloweenEventLocationType {
+    GRAVE = 0,
+    PUMPKIN = 1,
+    NUM_TYPES = 2,
+};
+
+enum TweenType {
+    TWEEN_LINEAR = 0,
+    TWEEN_QUADRATIC_IN = 1,
+    TWEEN_QUADRATIC_IN_OUT = 2,
+    TWEEN_CUBIC_IN = 3,
+    TWEEN_CUBIC_OUT = 4,
+    TWEEN_CUBIC_IN_OUT = 5,
+    TWEEN_QUARTIC_IN = 6,
+    TWEEN_CIRCULAR_IN = 7,
+    TWEEN_CIRCULAR_OUT = 8,
+    TWEEN_EASE_IN_OUT = 9,
+    TWEEN_EASE_BOUNCE = 10,
+    TWEEN_EXP_IN_OUT = 11,
+};
+
+enum GuiElementType {
+    LABEL = 0,
+    BUTTON = 1,
+    SLIDER = 2,
+    CHECKBOX = 3,
+    SELECT = 4,
+    TEXTBOX = 5,
+    TILE_PICKER = 6,
+    TEXT_CONTAINER = 7,
+    SERVER_DETAILS = 8,
+    ROOM_BROWSER = 9,
+    IMAGE_SELECT = 10,
+    WINDOW = 11,
+    FRIENDS_BROWSER = 12,
+};
+
+enum IntermissionType: unsigned char {
+    CAVE_CAVE = 0,
+    CAVE_FOREST = 1,
+    CAVE_RUINS = 2,
+    RUINS_FOREST = 3,
+    INTRO = 4,
+    FOREST_FOREST = 5,
+    FOREST_CATACOMBS = 6,
+    CATACOMBS_CATACOMBS = 7,
+    CATACOMBS_RIFT = 8,
+    INTRO_RIGHT = 9,
+    RIFT_RIFT = 10,
+    RIFT_LOOP = 11,
+    CATACOMBS_TOWER = 12,
+    TOWER_RIFT = 13,
+    RIFT_FINALBOSS = 14,
+};
+
+// Prepended SCENE_ to avoid conflicts
+enum Scene : unsigned char {
+    SCENE_NONE = 0,
+    SCENE_ELEVATOR = 1,
+    SCENE_FINAL_BOSS_DEFEATED = 2,
+    SCENE_FINAL_BOSS_DEFEATED_FINAL_FORM = 3,
+};
+
+enum NetGameEventType {
+    NET_EVENT_COMBAT_TEXT_TARGET = 0,
+    NET_EVENT_COMBAT_TEXT_POSITION = 1,
+    NET_EVENT_DIVINE_WEAPON_ACTIVATE = 2,
+    NET_EVENT_GOD_FIST_ACTIVATE = 3,
+    NET_EVENT_GOD_FIST_DEACTIVATE = 4,
+    NET_EVENT_GOD_FIST_TRIGGER = 5,
+    NET_EVENT_WEAPON_DEALT_DAMAGE = 6,
+};
+
+enum SkyType {
+    SKY_CAVE = 0,
+    SKY_FOREST = 1,
+    SKY_NIGHT = 2,
+    SKY_CLOUDS = 3,
+    SKY_BLACK = 4,
+    SKY_FALLING = 5,
+    NUM_SKY_TYPES = 6,
+};
+
+enum LevelFeel {
+    FEEL_NONE = 0,
+    FEEL_FLOOD = 1,
+    FEEL_BREAKABLE = 2,
+    FEEL_ROCKS = 3,
+    FEEL_TOWER_FLOOD = 4,
+    FEEL_TRAPS = 5,
+    FEEL_FOG = 6,
+    FEEL_DOUBLE_BOSS = 7,
+    FEEL_MIMICS = 8,
+    FEEL_SPIDERS = 9,
+    FEEL_GAUNTLET = 10,
+    FEEL_THIEF = 11,
+    FEEL_SLIME = 12,
+    FEEL_HALLOWEEN = 13,
+    FEEL_SNOW = 14,
+    NUM_FEELS = 15,
+};
+
+enum MoveMethod {
+    MOVE_WALK = 0,
+    MOVE_JUMP = 1,
+    MOVE_LEAP_OVER = 2,
+    MOVE_LEAP_OVER_RIGHT = 3,
+    MOVE_LEAP_OVER_LEFT = 4,
+    MOVE_CLIMB = 5,
+    MOVE_LEAP_UP = 6,
+    NUM_MOVE_METHODS = 7,
 };

@@ -1,7 +1,6 @@
 #pragma once
 #include <Vagante/sfml.h>
-#include <Vagante/sprite.h>
-#include <Vagante/stage.h>
+#include <Vagante/graphic.h>
 
 struct Particle {
     char padding[0x78];

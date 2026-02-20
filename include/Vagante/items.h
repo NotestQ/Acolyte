@@ -2,12 +2,16 @@
 #include <Vagante/sfml.h>
 #include <Vagante/forward.h>
 #include <Vagante/enums.h>
-#include <Vagante/sprite.h>
+#include <Vagante/graphic.h>
+#include <Vagante/entities.h>
+#include <Vagante/misc.h>
 #include <vector>
 #include <string>
 #include <memory>
 #include <map>
-#include <Vagante/entities.h>
+
+#pragma warning(push)
+#pragma warning(disable: 26495) // always initialize a member variable
 
 namespace AttackScriptDatabase {
     struct EffectCue {
@@ -118,8 +122,134 @@ struct ItemAttribute {
     bool smithBlessing;
 };
 
+struct ItemProperties {
+    std::string unidName;
+    std::string unidDescription;
+    uint spriteId;
+};
+
+struct ItemRarity {
+    int minItemLevel;
+    int maxItemLevel;
+    float rarityPart;
+    ItemType type;
+};
+
+struct ItemPoolRarity {
+    ItemPoolType type;
+    float rarity;
+};
+
+struct ItemPool {
+    std::vector<ItemRarity>	rarities;
+    std::vector<ItemPoolRarity>	subItemPools;
+};
+
+struct ItemGenerator {
+    uint seed;
+    std::vector<ItemProperties> potentialPotionProperties;
+    std::map<ItemType, uint> potionProperties;
+    std::vector<ItemProperties> potentialScrollProperties;
+    std::map<ItemType, uint> scrollProperties;
+    std::map<ItemType, bool> identified;
+    std::map<ItemPoolType, ItemPool> itemPools;
+    std::set<ItemType> uniqueItemTypes;
+    std::set<ItemType> spawnedUniqueItemTypes;
+    std::set<AttributeType> spawnedUniqueItemAttributeTypes;
+    std::vector<std::string> magicPrefixes;
+    std::vector<std::string> cursedMagicPrefixes;
+    std::vector<std::string> artifactPrefixes;
+    std::vector<std::string> artifactPrefixes2;
+    std::vector<std::string> artifactNouns;
+    std::set<std::string> usedArtifactNames;
+    std::vector<SkillType> lastSpellbooksSacrificed;
+    bool increasedCurseChance;
+};
+
 struct Item: public Entity {
-    char padding[0x368];
+    bool isBossChestReward;
+    bool hasBeenPickedUpBefore;
+    bool showedAnimationWhenPickedUp;
+    bool showedEffectsWhenPickedUp;
+    bool isCarried;
+    bool usable;
+    bool appliedToItem;
+    bool equipable;
+    bool godGift;
+    bool xbowDrawn;
+    uint equipSlot;
+    bool unique;
+    bool artifact;
+    bool droppable;
+    ItemType itemType;
+    std::vector<ItemAttribute> attributes;
+    bool resolvingBackInBounds;
+    int collidingObstacles;
+    int prevCollidingObstacles;
+    std::weak_ptr<Entity> owner;
+    bool serverDead;
+    bool inventoryHover;
+    uchar networkAttributesVersion;
+    uchar clientAttributesVersion;
+    ulong64 requestedAttributesTime;
+    int deathTimer;
+    bool sacrificed;
+    bool stackable;
+    int itemLevel;
+    float cost;
+    int droppedTimer;
+    bool isMaskedUsable;
+    bool droppedByPlayer;
+    bool insideShrineOrChest;
+    char _padding_;
+    std::weak_ptr<Doodad> pedestal;
+    std::weak_ptr<Projectile> attachedProjectile;
+    uint count;
+    bool baseAttributesSet;
+    int godGiftTimer;
+    sf::Vector3<float> tintColor;
+    uint randIndex;
+    uint frame;
+    ItemGenerator* itemGenerator;
+    VFont* tinyFont;
+    Sprite* sprite;
+    Sprite* droppedSprite;
+    Sprite* droppedSpriteMask;
+    Sprite* inventorySpriteMask;
+    int spriteIndex;
+    Sprite iconEquipSprite;
+    ItemAffix affix;
+    std::string name;
+    std::string description;
+    std::string useEffectText;
+    bool invisible;
+    float drawScale;
+    float inInventoryScale;
+    Tween drawScaleGrowTween;
+    Tween drawScaleShrinkTween;
+    bool fakeIdentified;
+    bool identified;
+    bool deadIdentified;
+    int identifyEffectTimer;
+    int curseEffectTimer;
+    int uncurseEffectTimer;
+    int equipEffectTimer;
+    int godHitEffectTimer;
+    int hoverEffectTimer;
+    bool cursed;
+    bool permanentCursed;
+    bool touchingPlayer;
+    bool belongsToShopkeeper;
+    uchar wandCharges;
+    uchar maxWandCharges;
+    int outlineEffectTimer;
+    int shopSelectTimer;
+    std::weak_ptr<Player> holder;
+    Skill* skill;
+    std::weak_ptr<Entity> holderEntity;
+    GuiTextContainer* textContainer;
+    std::vector<std::weak_ptr<Item>> storedItems;
+    bool isStoredItem;
 };
 
 struct alignas(8) Weapon: public Entity {
@@ -233,3 +363,5 @@ struct alignas(8) Weapon: public Entity {
     bool godFistAttack;
     bool aimArmSpriteGlow;
 };
+
+#pragma warning(pop)

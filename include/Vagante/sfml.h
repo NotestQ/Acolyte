@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <string>
 
 // Definitions from SFML. Someone smarter than me can likely include SFML in the project? Maybe?
 typedef unsigned int uint;
@@ -8,7 +9,7 @@ typedef unsigned short ushort;
 typedef unsigned char uchar;
 
 namespace sf {
-    typedef enum PrimitiveType {
+    enum PrimitiveType {
         Points = 0,
         Lines = 1,
         LineStrip = 2,
@@ -19,12 +20,27 @@ namespace sf {
         TriangleFan = 5,
         TrianglesFan = 5,
         Quads = 6
-    } PrimitiveType;
+    };
+
+    enum Style {
+        Regular = 0,
+        Bold = 1,
+        Italic = 2,
+        Underlined = 4,
+        StrikeThrough = 8,
+    };
 
     template <typename T>
     struct Vector2 {
         T x;
         T y;
+    };
+
+    template <typename T>
+    struct Vector3 {
+        T x;
+        T y;
+        T z;
     };
 
     template <typename T>
@@ -78,4 +94,39 @@ namespace sf {
         Texture* m_texture;
         Rect<int> m_textureRect;
     };
+
+    struct Transform {
+        float m_matrix[16];
+    };
+
+    struct Transformable {
+        void* vtable;
+        Vector2<float> m_origin;
+        Vector2<float> m_position;
+        float m_rotation;
+        Vector2<float> m_scale;
+        Transform m_transform;
+        bool m_transformNeedUpdate;
+        Transform m_inverseTransform;
+        bool m_inverseTransformNeedUpdate;
+    };
+
+    struct View {
+        Vector2<float> m_center;
+        Vector2<float> m_size;
+        float m_rotation;
+        Rect<float> m_viewport;
+        Transform m_transform;
+        Transform m_inverseTransform;
+        bool m_transformUpdated;
+        bool m_invTransformUpdated;
+    };
+
+    struct String {
+        std::string m_string;
+    };
+
+    struct alignas(8) RenderTexture { char padding[0x208]; };
+
+    struct RenderStates { char padding[0x60]; };
 }

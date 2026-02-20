@@ -13,3 +13,8 @@ struct Floater;
 struct Wisp;
 struct Weapon;
 struct Item;
+struct Level;
+struct Monster;
+struct Doodad;
+struct HoverText;
+struct ItemGenerator;
