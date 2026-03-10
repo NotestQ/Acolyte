@@ -428,7 +428,9 @@ struct Monster;
 struct Platform;
 
 struct Affinity;
-struct Skill;
+struct Skill {
+    char padding[0x72c];
+};
 struct AffinityAttributes {
     bool canRoll;
     bool rogueWallJump;

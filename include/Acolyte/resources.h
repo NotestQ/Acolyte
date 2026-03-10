@@ -1,6 +1,7 @@
 #pragma once
 #include <Vagante/sfml.h>
 #include <Acolyte/exports.h>
+#include <sigslot/signal.hpp>
 #include <unordered_map>
 #include <string>
 
@@ -10,7 +11,7 @@ struct TextureData {
 };
 inline std::unordered_map<std::string, TextureData> TextureDataMap;
 
-namespace VaganteUtils {
+namespace sdk::Resources {
 	std::vector<sf::Image> SeparateImageChunks(sf::Image& image, int chunkSize);
 	sf::Image StitchImageChunks(std::vector<sf::Image> images, int width, int chunkSize);
 
@@ -29,4 +30,8 @@ namespace VaganteUtils {
 	ACOLYTE_API extern TextureConstructorFn TextureConstructor;
 	ACOLYTE_API extern LoadTextureFromFileFn LoadTextureFromFile;
 	ACOLYTE_API extern GetTextureFn GetTexture;
+
+	ACOLYTE_API extern bool ResourcesInitialized;
+
+	ACOLYTE_API extern sigslot::signal<> OnResourceInitialized;
 }

@@ -1,4 +1,4 @@
-#include <Acolyte/vaganteutils.h>
+#include <Acolyte/resources.h>
 #include <Acolyte/logger.h>
 #include <Acolyte/utils.h>
 #include <sdk_registry.h>
@@ -10,7 +10,7 @@
 static Logger textureLogger("Acolyte");
 static const uintptr_t moduleBaseAddress = (uintptr_t)GetModuleHandleA(NULL);
 
-namespace VaganteUtils {
+namespace sdk::Resources {
     std::vector<sf::Image> SeparateImageChunks(sf::Image& image, int chunkSize) {
         std::vector<sf::Image> returnVector;
 
@@ -102,16 +102,25 @@ namespace VaganteUtils {
 	LoadTextureFromFileFn LoadTextureFromFile = nullptr;
 	GetTextureFn GetTexture = nullptr;
     GetTextureFn pOriginalGetTexture = nullptr;
+    
+    bool ResourcesInitialized = false;
+    sigslot::signal<> OnResourceInitialized;
 
     static sf::Texture* __cdecl GetTextureDetour(std::string filePath, bool param_2) {
         // Spammy but useful, maybe when we get debug levels
-        //textureLogger.LogDebug("Requested path: " + filePath + " " + std::to_string(param_2));
+        textureLogger.LogDebug("Requested path: " + filePath + " " + std::to_string(param_2));
         if (TextureDataMap.contains(filePath)) {
-            //textureLogger.LogError("File path present, returning from texture data map...");
+            //textureLogger.LogWarning("File path present, returning from texture data map...");
             return &TextureDataMap[filePath].texture;
         }
 
         return pOriginalGetTexture(filePath, param_2);
+    }
+
+    void resourceInitializedDetour(SafetyHookContext& ctx) {
+        textureLogger.LogWarning("Resources initialized!");
+        sdk::Resources::OnResourceInitialized();
+        ResourcesInitialized = true;
     }
 
     static void InitVaganteUtils() {
@@ -126,6 +135,8 @@ namespace VaganteUtils {
 		GetTexture = reinterpret_cast<GetTextureFn>(moduleBaseAddress + 0x34CB20);
 
         Utils::CreateHook(reinterpret_cast<void**>(reinterpret_cast<GetTextureFn>(moduleBaseAddress + 0x34CB20)), &GetTextureDetour, reinterpret_cast<void**>(&pOriginalGetTexture));
+
+        static SafetyHookMid resourceInitializedHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x33CA41), resourceInitializedDetour); // Main after line 670
 
 		textureLogger.LogDebug("VaganteUtils initialized!");
 	}

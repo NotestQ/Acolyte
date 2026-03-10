@@ -90,3 +90,5 @@ struct WeaponNetSwingMeta {
 struct Rpc {};
 
 struct LightEvent {};
+
+struct Client {};
