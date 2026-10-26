@@ -52,3 +52,8 @@ struct RetargetManager {
     Level* m_level;
     std::vector<std::pair<std::shared_ptr<Monster>, uint>> requesterFrameCooldowns;
 };
+
+struct RetargetManagerInterface {
+    void* vtable;
+    std::shared_ptr<Unit> targetUnit;
+};

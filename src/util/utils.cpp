@@ -10,8 +10,15 @@ namespace Utils {
         MH_STATUS hook = MH_CreateHook(pTarget, pDetour, ppOriginal);
         if (hook != MH_OK) {
             utilsLogger.LogError("Couldn't hook! Status: ", std::to_string(hook));
+            if (ppOriginal) *ppOriginal = nullptr;
+            return;
         }
-        MH_EnableHook(pTarget);
+        hook = MH_EnableHook(pTarget);
+        if (hook != MH_OK) {
+            utilsLogger.LogError("Couldn't enable hook! Status: ", std::to_string(hook));
+            MH_RemoveHook(pTarget);
+            if (ppOriginal) *ppOriginal = nullptr;
+        }
     }
 
     // Rewrite memory directly at address

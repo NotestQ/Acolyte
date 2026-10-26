@@ -2,6 +2,7 @@
 #include <Vagante/enums.h>
 #include <Vagante/forward.h>
 #include <Vagante/sfml.h>
+#include <map>
 
 struct NetGameEvent {
     NetGameEventType eventType;
@@ -91,4 +92,72 @@ struct Rpc {};
 
 struct LightEvent {};
 
-struct Client {};
+// Steam IDs are byte-aligned in the game's network structures.
+#pragma pack(push, 1)
+struct CSteamID {
+    ulong64 value;
+};
+#pragma pack(pop)
+
+struct SteamCallback {
+    void* vtable;
+    uchar flags;
+    int callback;
+};
+
+struct SteamCallResult: public SteamCallback {
+    ulong64 handle;
+    void* object;
+    void* function;
+};
+
+struct LobbyEnter_t {
+    ulong64 m_ulSteamIDLobby;
+    uint m_rgfChatPermissions;
+    bool m_bLocked;
+    uint m_EChatRoomEnterResponse;
+};
+
+struct Snapshot {
+    std::vector<EntityState> netEntities;
+    int parseEntitiesNum;
+    int numEntities;
+    bool valid;
+    ulong64 serverTime;
+    int messageNum;
+    int deltaNum;
+    int cmdNum;
+    int floorIndex;
+};
+
+struct Netchan {
+    bool usesSteamNetworking;
+    CSteamID remoteAddress;
+    sf::UdpSocket* udpSocket;
+    sf::TcpSocket* tcpSocket;
+    bool tcpSocketSetByServer;
+    sf::IpAddress remoteIp;
+    ushort remoteTcpPort;
+    ushort remoteUdpPort;
+    std::map<int, ulong64> sequenceToTime;
+    ulong64 lastReceivedPacket;
+    uint incomingSequence;
+    uint outgoingSequence;
+    uint fragmentSequence;
+    ushort fragmentLength;
+    uchar fragmentBuffer[16384];
+    bool unsentFragments;
+    ushort unsentFragmentStart;
+    int unsentLength;
+    uchar unsentBuffer[16384];
+    bool isServerSide;
+    ulong64 currentPing;
+    ulong64 targetPing;
+    ulong64 smoothedRoundTripTime;
+    std::vector<int> graphBytesIn;
+    std::vector<int> graphBytesInUncompressed;
+    std::vector<int> graphBytesOut;
+    std::vector<int> graphBytesOutUncompressed;
+    std::vector<ulong64> graphPing;
+    int graphPosition;
+};

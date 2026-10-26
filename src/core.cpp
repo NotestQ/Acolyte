@@ -65,10 +65,15 @@ DWORD WINAPI init() {
     auto loadOrder = ParseMods(cwd / "Acolyte" / "Mods");
     if (loadOrder) {
         for (auto& manifest : *loadOrder) {
+            if (manifest.name == "MultiplayerExtendedFixed" || manifest.name == "MultiplayerExtended" ||
+                manifest.name == "MoreMultiplayer") {
+                mainLogger.Log("Skipping " + manifest.name + "; expanded multiplayer is built into Acolyte.");
+                continue;
+            }
             mainLogger.LogDebug("Loading " + manifest.name);
             for (const auto& dll : fs::directory_iterator(manifest.manifest_path.parent_path())) {
-                if (dll.path().extension() == ".dll")
-                    LoadLibraryA(dll.path().string().c_str());
+                if (dll.path().extension() == ".dll" && !LoadLibraryA(dll.path().string().c_str()))
+                    mainLogger.LogError("Could not load " + dll.path().string() + ": Windows error " + std::to_string(GetLastError()));
             }
         }
         mainLogger.Log("Mods loaded, have fun!");

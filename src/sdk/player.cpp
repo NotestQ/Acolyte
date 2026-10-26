@@ -12,7 +12,21 @@ static Logger playerLogger("Acolyte");
 static const uintptr_t moduleBaseAddress = (uintptr_t)GetModuleHandleA(NULL);
 
 void addPlayerDetour(SafetyHookContext& ctx) {
+	// EBP - 0x14 is the stored shared_ptr<Player>, ESP is already too late when our hook runs
 	std::shared_ptr<Player>& player = *reinterpret_cast<std::shared_ptr<Player>*>(ctx.ebp + -0x14);
+
+	sdk::Player::OnPlayerAdded(player);
+}
+void addRandomPlayerDetour(SafetyHookContext& ctx) {
+	// initializePlayer already destroyed its argument, use the local shared_ptr instead
+	std::shared_ptr<Player>& player = *reinterpret_cast<std::shared_ptr<Player>*>(ctx.ebp - 0x28);
+
+	sdk::Player::OnPlayerAdded(player);
+}
+
+void addNetworkedPlayerDetour(SafetyHookContext& ctx) {
+	// Same here, the copy passed to initializePlayer is no longer alive
+	std::shared_ptr<Player>& player = *reinterpret_cast<std::shared_ptr<Player>*>(ctx.ebp - 0x48);
 
 	sdk::Player::OnPlayerAdded(player);
 }
@@ -48,6 +62,8 @@ namespace sdk::Player {
 		SkillConstructor = reinterpret_cast<SkillConstructorFn>(moduleBaseAddress + 0x38B150);
 
 		static SafetyHookMid addPlayerHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x30873B), addPlayerDetour); // After line 149
+		static SafetyHookMid addRandomPlayerHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x308a44), addRandomPlayerDetour); // After line 218
+		static SafetyHookMid addNetworkedPlayerHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x1573f2), addNetworkedPlayerDetour); // After line 2027
 		static SafetyHookMid setLevelHookRet1 = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x2C7EA8), setLevelDetour); // After line 1276
 		static SafetyHookMid setLevelHookRet2 = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x2C7ED0), setLevelDetour); // After line 1279
 		

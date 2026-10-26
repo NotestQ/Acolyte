@@ -1,5 +1,6 @@
 #pragma once
 #include "Vagante/entities.h"
+#include <Vagante/ui.h>
 #include <Acolyte/exports.h>
 #include <string>
 #include <optional>
@@ -85,6 +86,8 @@ namespace sdk::PlayerClass {
     ACOLYTE_API std::optional<ModdedClass*> Register(const std::filesystem::path& customPath, const std::string& displayName, bool loadAssets = true);
 
     // Helper functions
+
+    ACOLYTE_API int GetPlayableClassCount();
 
     ACOLYTE_API std::optional<ModdedClass*> GetByName(const std::string& displayName);
     ACOLYTE_API std::optional<ModdedClass*> GetByIndex(int gameIndex);

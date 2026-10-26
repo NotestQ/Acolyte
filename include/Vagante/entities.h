@@ -374,8 +374,42 @@ struct VFont {
     sf::Texture* texture;
 };
 
-struct Bonfire: Entity {
-    char padding[0x508];
+struct Bonfire: public Entity {
+    struct HealingPlayerState {
+        std::shared_ptr<Player> player;
+        bool healing;
+        int extraHealingAmount;
+    };
+
+    struct ItemSacrifice {
+        std::weak_ptr<Item> item;
+        int timer;
+        float originalX;
+        float originalY;
+        int healAmount;
+    };
+
+    struct FoodToBeCooked {
+        std::weak_ptr<Entity> sacrifice;
+        ItemType itemFood;
+        std::weak_ptr<Player> owner;
+        int timer;
+        float originalX;
+        float originalY;
+    };
+
+    uint frame;
+    uint effectCounter;
+    uint netEffectCounter;
+    std::vector<int> healedAmountCustomLevel;
+    Sprite sprUnlit;
+    Sprite sprLit;
+    Sprite* currSprite;
+    int bonfireLevel;
+    std::vector<Bonfire::HealingPlayerState> healingPlayers;
+    ParticlePool fireParticles;
+    std::vector<Bonfire::ItemSacrifice> sacrificeItems;
+    std::vector<Bonfire::FoodToBeCooked> cookingFoods;
 };
 
 struct Fairy: public Unit {
@@ -419,12 +453,46 @@ struct Shop;
 struct Shrine;
 struct LoadSavePoint;
 struct Checkpoint;
-struct Grave;
+struct Grave: public Entity {
+    Sprite sprite;
+    std::weak_ptr<Player> player;
+    PlayerClass skeletonPlayerClass;
+    int skeletonPalette;
+    bool touchingPlayer;
+    int showPortraitSpriteTimer;
+    bool haveRevivedSomeone;
+    bool netHaveTakenCost;
+    int netReviveSourcePlayerIndex;
+    bool visible;
+    bool fullRevive;
+    bool reviving;
+    int reviveFrames;
+    int afterReviveFrames;
+    bool netSinking;
+};
+
 struct Teleportal;
 struct ExitDestination;
 struct Sign;
 struct Thief;
-struct Monster;
+struct Monster: public Unit, public RetargetManagerInterface {
+    int goldDropMin;
+    int goldDropMax;
+    int expPoints;
+    int deadFrames;
+    float healthScaleFactor;
+    float damageScaleFactor;
+    int champion;
+    bool dropsLoot;
+    bool newGamePlus;
+    bool summonTeleporting;
+    bool summonTeleportingIn;
+    sf::Vector2<float> summonTeleportInDestination;
+    std::shared_ptr<Unit> summoner;
+    bool m_processingPathRequest;
+    bool m_processingRetargetRequest;
+};
+
 struct Platform;
 
 struct Affinity;
@@ -549,8 +617,6 @@ struct Background {
     std::vector<std::string> positive;
     std::vector<std::string> negative;
 };
-struct PlayerMenu;
-struct PlayerCustomizeMenu;
 struct Player: public Unit {
     std::shared_ptr<Weapon> unarmedWeapon;
     bool emoting;

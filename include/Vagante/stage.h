@@ -225,3 +225,22 @@ struct HalloweenEventLocations {
     bool facingLeft;
     uint shakeFrames;
 };
+
+struct LevelGenerator {
+    RoomDatabase* roomDatabase;
+    ItemGenerator* itemGenerator;
+    std::vector<bool> haveSpawnedFairy;
+    std::vector<bool> fairiesSaved;
+    int thievesSpawned;
+    std::map<int, int> shrineSpawnCount;
+    std::set<EntityType> spawnedBosses;
+    std::map<EntityType, int> spawnedChampions;
+    std::set<LevelFeel> usedLevelFeels;
+    bool spawnMedusaHeads;
+    bool networkClientSide;
+    bool hardMode;
+    bool networked;
+    bool newGamePlus;
+    int difficultyPlayers;
+    int shopLevel;
+};

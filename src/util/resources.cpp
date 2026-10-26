@@ -6,11 +6,93 @@
 #include <safetyhook.hpp>
 #include <MinHook.h>
 #include <iostream>
+#include <algorithm>
 
 static Logger textureLogger("Acolyte");
 static const uintptr_t moduleBaseAddress = (uintptr_t)GetModuleHandleA(NULL);
 
 namespace sdk::Resources {
+    static std::string NormalizeTexturePath(std::string path) {
+        std::replace(path.begin(), path.end(), '\\', '/');
+        return path;
+    }
+
+    bool InitTextureData(const std::string& texturePath, int chunkSize) {
+        if (!ResourcesInitialized || chunkSize <= 0) {
+            textureLogger.LogError("Cannot initialize texture before resources are ready or with an invalid chunk size: " + texturePath);
+            return false;
+        }
+
+        const std::string key = NormalizeTexturePath(texturePath);
+        auto existing = TextureDataMap.find(key);
+        if (existing != TextureDataMap.end() && !existing->second.images.empty()) {
+            const auto size = existing->second.images.front().m_size;
+            if (size.x != chunkSize || size.y != chunkSize) {
+                textureLogger.LogError("Texture already initialized with a different chunk size: " + key);
+                return false;
+            }
+            return true;
+        }
+
+        sf::Texture* texture = GetTexture(key, false);
+        if (!texture) {
+            textureLogger.LogError("Texture not found: " + key);
+            return false;
+        }
+
+        sf::Image image{};
+        CopyToImage(texture, &image);
+        if (image.m_size.x == 0 || image.m_size.y == 0 ||
+            image.m_size.x % chunkSize != 0 || image.m_size.y % chunkSize != 0) {
+            textureLogger.LogError("Texture dimensions must be multiples of the chunk size: " + key);
+            return false;
+        }
+
+        TextureData data{};
+        data.texture = *texture;
+        data.images = SeparateImageChunks(image, chunkSize);
+        TextureDataMap[key] = std::move(data);
+        return true;
+    }
+
+    bool AppendTextureImage(const std::string& texturePath, const std::string& imagePath, int chunkSize) {
+        if (!ResourcesInitialized || chunkSize <= 0) {
+            textureLogger.LogError("Cannot append texture image before resources are ready or with an invalid chunk size: " + texturePath);
+            return false;
+        }
+
+        sf::Image image{};
+        std::string path = imagePath;
+        if (!LoadImageFromFile(&image, &path)) {
+            textureLogger.LogError("Failed to load texture image: " + imagePath);
+            return false;
+        }
+        if (image.m_size.x != chunkSize || image.m_size.y != chunkSize) {
+            textureLogger.LogError("Image dimensions must match the chunk size: " + imagePath);
+            return false;
+        }
+
+        const std::string key = NormalizeTexturePath(texturePath);
+        if (!InitTextureData(key, chunkSize))
+            return false;
+
+        auto& data = TextureDataMap.at(key);
+        data.images.push_back(std::move(image));
+        sf::Image stitchedImage = StitchImageChunks(data.images, data.texture.m_size.x, chunkSize);
+
+        sf::Texture texture{};
+        TextureConstructor(&texture);
+        sf::Rect<int> rect{};
+        if (!LoadTextureFromImage(&texture, &stitchedImage, &rect)) {
+            data.images.pop_back();
+            textureLogger.LogError("Failed to update texture: " + key);
+            return false;
+        }
+
+        data.texture = texture;
+        return true;
+    }
+
     std::vector<sf::Image> SeparateImageChunks(sf::Image& image, int chunkSize) {
         std::vector<sf::Image> returnVector;
 
@@ -99,6 +181,7 @@ namespace sdk::Resources {
 	LoadTextureFromImageFn LoadTextureFromImage = nullptr;
 	SaveImageToFileFn SaveImageToFile = nullptr;
 	TextureConstructorFn TextureConstructor = nullptr;
+	TextureDestructorFn TextureDestructor = nullptr;
 	LoadTextureFromFileFn LoadTextureFromFile = nullptr;
 	GetTextureFn GetTexture = nullptr;
     GetTextureFn pOriginalGetTexture = nullptr;
@@ -109,9 +192,10 @@ namespace sdk::Resources {
     static sf::Texture* __cdecl GetTextureDetour(std::string filePath, bool param_2) {
         // Spammy but useful, maybe when we get debug levels
         textureLogger.LogDebug("Requested path: " + filePath + " " + std::to_string(param_2));
-        if (TextureDataMap.contains(filePath)) {
+        const std::string key = NormalizeTexturePath(filePath);
+        if (TextureDataMap.contains(key)) {
             //textureLogger.LogWarning("File path present, returning from texture data map...");
-            return &TextureDataMap[filePath].texture;
+            return &TextureDataMap[key].texture;
         }
 
         return pOriginalGetTexture(filePath, param_2);
@@ -119,14 +203,15 @@ namespace sdk::Resources {
 
     void resourceInitializedDetour(SafetyHookContext& ctx) {
         textureLogger.LogWarning("Resources initialized!");
-        sdk::Resources::OnResourceInitialized();
         ResourcesInitialized = true;
+        sdk::Resources::OnResourceInitialized();
     }
 
     static void InitVaganteUtils() {
 		textureLogger.LogDebug("Initializing VaganteUtils...");
 
 		CopyToImage = reinterpret_cast<CopyToImageFn>(moduleBaseAddress + 0x4169E0);
+		TextureDestructor = reinterpret_cast<TextureDestructorFn>(moduleBaseAddress + 0x4167F0);
 		LoadImageFromFile = reinterpret_cast<LoadImageFromFileFn>(moduleBaseAddress + 0x4184E0);
 		LoadTextureFromImage = reinterpret_cast<LoadTextureFromImageFn>(moduleBaseAddress + 0x4173D0);
 		SaveImageToFile = reinterpret_cast<SaveImageToFileFn>(moduleBaseAddress + 0x418520);

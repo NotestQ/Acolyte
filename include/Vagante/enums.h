@@ -36,7 +36,7 @@ enum StatusEffectType {
     STATUS_GOD_FIST = 32,
 };
 
-enum SkillType {
+enum SkillType : unsigned char {
     DASH = 0,
     FIRE_SHIELD = 1,
     TELEPORT = 2,
@@ -69,7 +69,7 @@ enum SkillType {
     DOG_WHISTLE = 29
 };
 
-enum BackgroundType {
+enum BackgroundType : unsigned char {
     BG_NONE = 0,
     BG_STRONG = 1,
     BG_EXPERIENCED = 2,
@@ -117,7 +117,8 @@ enum PlayerStat {
     NUM_PLAYER_STATS = 7,
 };
 
-enum PlayerClass {
+// Custom classes use IDs above the built-in values.
+enum PlayerClass : int {
     CLASS_KNIGHT = 0,
     CLASS_ROGUE = 1,
     CLASS_MAGE = 2,
@@ -126,6 +127,58 @@ enum PlayerClass {
     CLASS_SKELETON = 5,
     CLASS_RANDOM = 6,
     NUM_PLAYER_CLASSES = 7
+};
+
+enum AffinityType {
+    ACROBATICS = 0,
+    ALCHEMY = 1,
+    ARCHERY = 2,
+    CASTER = 3,
+    DEMONIC = 4,
+    ENCHANT = 5,
+    FIRE = 6,
+    FORTUNE = 7,
+    ICE = 8,
+    PSYCHIC = 9,
+    WISDOM = 10,
+    SHADOW = 11,
+    DAGGER = 12,
+    SWORD = 13,
+    WAND = 14,
+    HOLY = 15,
+    DEFENSE = 16,
+    STATS = 17,
+    CQC = 18,
+    BERSERK = 19,
+    ANIMAL = 20,
+    ROD = 21,
+    PET_DEFENSE = 22,
+    PET_OFFENSE = 23,
+    PET_UTILITY = 24,
+    CLUB = 25,
+    NUM_AFFINITY_TYPES = 26
+};
+
+enum SubSkillMenu {
+    SKILLS = 0,
+    QUICK_SKILL_CONFIG = 1,
+    SKILL_CONTROLS = 2
+};
+
+enum GameOverMenuState {
+    GAMEOVER_CLOSED = 0,
+    GAMEOVER_INVENTORY = 1,
+    GAMEOVER_RETRACT_INVENTORY = 2,
+    GAMEOVER_STATS = 3,
+    GAMEOVER_READY = 4
+};
+
+enum MenuState {
+    STATE_INVENTORY = 0,
+    STATE_SPELLS = 1,
+    STATE_STATS = 2,
+    STATE_AFFINITIES = 3,
+    NUM_STATES = 4
 };
 
 enum PlayerEmote : unsigned char {
@@ -902,4 +955,112 @@ enum MoveMethod {
     MOVE_CLIMB = 5,
     MOVE_LEAP_UP = 6,
     NUM_MOVE_METHODS = 7,
+};
+
+enum ControlsType {
+    CONTROLS_KEYBOARD = 0,
+    CONTROLS_XBOX_360 = 1,
+    CONTROLS_XBOX_ONE = 2,
+    CONTROLS_PS3 = 3,
+    CONTROLS_PS4 = 4,
+    CONTROLS_STEAM = 5,
+    CONTROLS_GENERIC_GAMEPAD = 6,
+    NUM_CONTROLS_TYPES = 7,
+};
+
+enum ServerState {
+    STATE_INITIALIZING = 0,
+    STATE_CREATING_LOBBY = 1,
+    STATE_RUNNING = 2,
+    STATE_ERROR = 3,
+    STATE_STOPPED = 4,
+};
+
+enum ClientNetworkState {
+    CLIENT_DISCONNECTED = 0,
+    CLIENT_HOSTING = 1,
+    CLIENT_INITIALIZING = 2,
+    CLIENT_CONNECTING_LOBBY = 3,
+    CLIENT_CONNECTING_SERVER_STEAM = 4,
+    CLIENT_CONNECTING_SERVER_IP = 5,
+    CLIENT_CONNECTED_AUTHENTICATED = 6,
+    CLIENT_CONNECTION_FAILURE = 7,
+};
+
+enum NetMenuReturnValue {
+    NETMENU_NONE = 0,
+    NETMENU_BACK = 1,
+    NETMENU_HOST = 2,
+    NETMENU_HOST_STEAM = 3,
+    NETMENU_HOST_NO_STEAM = 4,
+    NETMENU_JOIN_FRIEND = 5,
+    NETMENU_CONNECT_IP = 6,
+    NETMENU_JOIN_LOBBY = 7,
+    NETMENU_CANCEL_LOADING = 8,
+};
+
+enum MusicState {
+    MUSIC_LEVEL = 0,
+    MUSIC_BOSS = 1,
+    MUSIC_SHOP = 2,
+    MUSIC_INTERMISSION = 3,
+    MUSIC_GAME_OVER = 4,
+    MUSIC_CHARACTER_SELECT = 5,
+    MUSIC_FINAL_BOSS_PHASE1 = 6,
+    MUSIC_FINAL_BOSS_PHASE2 = 7,
+    MUSIC_CREDITS = 8,
+    MUSIC_NONE = 9,
+};
+
+enum AltMusicState {
+    ALT_MUSIC_CAMPFIRE = 0,
+    ALT_MUSIC_NONE = 1,
+};
+
+enum GuiItemAnimation {
+    ANIM_NONE = 0,
+    ANIM_CARD_FLIP = 1,
+    ANIM_CARD_RESPONSIVE = 2,
+    ANIM_CARD_FADE = 3,
+    ANIM_SHIFT_LEFT = 4,
+    ANIM_SHIFT_RIGHT = 5,
+};
+
+enum UnlockableType {
+    BACKGROUND = 0,
+    CLASS = 1,
+    MUSIC = 2,
+    GAME_MODE = 3,
+    SPECIAL = 4,
+};
+
+enum Superlative {
+    TITLE_SAVIOR = 0,
+    TITLE_GREEDIEST = 1,
+    TITLE_LEMMING = 2,
+    TITLE_BIBLIOPHILE = 3,
+    TITLE_CHEF = 4,
+    TITLE_UNLUCKY = 5,
+    TITLE_TRICKY_SHOOTER = 6,
+    TITLE_GOD_SLAYER = 7,
+    TITLE_VAMPIRE = 8,
+    TITLE_RANCID = 9,
+    TITLE_BONE_KING = 10,
+    TITLE_PIONEER = 11,
+    TITLE_BLASPHEMOUS = 12,
+    TITLE_WORST = 13,
+    TITLE_GAMBLER = 14,
+    TITLE_MOST_WANTED = 15,
+    TITLE_SABOTEUR = 16,
+    TITLE_BLOODLETTER = 17,
+    TITLE_THIRSTIEST = 18,
+    TITLE_JINXED = 19,
+    TITLE_CHICKEN_KILLER = 20,
+    TITLE_HANDICAPPED = 21,
+    TITLE_OBLIVIOUS = 22,
+    TITLE_STUPID = 23,
+    TITLE_COWARD = 24,
+    TITLE_HEAVEN_BLESSED = 25,
+    TITLE_NAKED = 26,
+    TITLE_FIST = 27,
 };

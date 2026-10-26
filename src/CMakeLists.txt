@@ -1,7 +1,9 @@
 ﻿# src/CMakeLists.txt
 
 add_library(Acolyte SHARED 
-  "version.cpp" "core.cpp" "util/logger.cpp" "util/parser.cpp" "util/sdk_registry.cpp" "sdk/playerclass.cpp" "sdk/player.cpp"  "util/resources.cpp" "util/utils.cpp" "sdk/item.cpp" "sdk/game.cpp")
+  "version.cpp" "core.cpp" "util/logger.cpp" "util/parser.cpp" "util/sdk_registry.cpp" "sdk/playerclass.cpp" "sdk/player.cpp"  "util/resources.cpp" "util/utils.cpp" "sdk/item.cpp" "sdk/game.cpp" "sdk/ui.cpp" "sdk/lobby.cpp"
+  "sdk/multiplayer/multiplayer.cpp" "sdk/multiplayer/gameplay.cpp" "sdk/multiplayer/palettes.cpp"
+  "sdk/multiplayer/saves.cpp" "sdk/multiplayer/storage.cpp")
 
 # Public headers for consumers
 target_include_directories(Acolyte

@@ -14,10 +14,8 @@ static Logger playerClassLogger("Acolyte");
 static const uintptr_t moduleBaseAddress = (uintptr_t)GetModuleHandleA(NULL);
 
 void drawCustomizeMenuFrameDetour(SafetyHookContext& ctx) {
-    std::vector<int>& playerClassVector = *reinterpret_cast<std::vector<int>*>(ctx.esi + 0x3398);
-    int selectionWrap = *reinterpret_cast<int*>(ctx.esi + 0x33C8);
-
-    int playerClassIndex = playerClassVector.at(selectionWrap);
+    PlayerMenu* menu = reinterpret_cast<PlayerMenu*>(ctx.esi);
+    int playerClassIndex = menu->availableClasses.at(menu->playerClass);
     // Corrects text.png wrapping, player class 6 (random) will always be at the fifth position
     // 8 and above will always be two behind
     if (playerClassIndex == 6) playerClassIndex = 5;
@@ -50,17 +48,24 @@ void classGfxPathDetour(SafetyHookContext& ctx) {
 
     auto moddedClass = sdk::PlayerClass::GetByModdedIndex(classIndex);
     if (!moddedClass) {
-        playerClassLogger.LogError("Failed to get class with index " + classIndex);
+        playerClassLogger.LogError("Failed to get class with index " + std::to_string(classIndex));
         return;
     }
 
     *reinterpret_cast<const char**>(ctx.esp + 4) = (*moddedClass)->gfxPath;
 }
 
+void portraitClassSwitchDetour(SafetyHookContext& ctx) {
+    // Portraits have a separate class switch, use its first branch and replace the path below
+    if (sdk::PlayerClass::GetByIndex(static_cast<int>(ctx.esi)))
+        ctx.eip = moduleBaseAddress + 0x2C69EB;
+}
+
 void setStartingItemDetour(SafetyHookContext& ctx) {
 #define breakSwitch ctx.eip = moduleBaseAddress + 0x30B4E0; return; // Equivalent of a break; on the switch
 
-    int classIndex = *reinterpret_cast<int*>(ctx.ecx + 0x34c) - 8;
+    Player* player = reinterpret_cast<Player*>(ctx.ecx);
+    int classIndex = static_cast<int>(player->playerClass) - 8;
     auto playerClass = sdk::PlayerClass::GetByModdedIndex(classIndex);
 
     if (!playerClass) {
@@ -88,8 +93,7 @@ std::string* __fastcall getClassNameDetour(std::string* returnStoragePtr, int cl
 
 sdk::PlayerClass::GetPlayerClassFn pOriginalGetPlayerClass = nullptr;
 int __fastcall getPlayerClassDetour(PlayerMenu* menuThis, void*) {
-    uintptr_t base = (uintptr_t)menuThis;
-    std::vector<int>& playerClassVector = *reinterpret_cast<std::vector<int>*>(base + 0x3398);
+    auto& playerClassVector = menuThis->availableClasses;
     int baseClassAmount = 6;
     auto vectorSize = playerClassVector.size();
     auto wishSize = baseClassAmount + sdk::PlayerClass::ModdedClassList.size();
@@ -102,9 +106,9 @@ int __fastcall getPlayerClassDetour(PlayerMenu* menuThis, void*) {
         // Insert class based on pre-calculated index
         for (auto i = vectorSize - baseClassAmount; i < sdk::PlayerClass::ModdedClassList.size(); i++) {
             sdk::PlayerClass::ModdedClass newClass = sdk::PlayerClass::ModdedClassMap[sdk::PlayerClass::ModdedClassList.at(i)];
-            playerClassVector.push_back(newClass.index);
+            playerClassVector.push_back(static_cast<PlayerClass>(newClass.index));
         }
-        playerClassVector.push_back(6);
+        playerClassVector.push_back(CLASS_RANDOM);
     }
 
     return pOriginalGetPlayerClass(menuThis, NULL);
@@ -130,28 +134,7 @@ void __cdecl setStartingAttributesDetour(std::shared_ptr<Player> player, void* u
     pOriginalSetStartingAttributes(player, unused);
 }
 
-static void InitClassText() {
-    sf::Texture* classTextTexture = sdk::Resources::GetTexture(R"(gui/character_menu/class_text.png)", false);
-    if (!classTextTexture) {
-        playerClassLogger.LogError("Class texture does not exist yet!");
-        return;
-    }
-
-    sf::Image textImage{};
-    sdk::Resources::CopyToImage(classTextTexture, &textImage);
-
-    std::vector<sf::Image> images = sdk::Resources::SeparateImageChunks(textImage, 64);
-    TextureData data{};
-
-    data.images = images;
-    data.texture = *classTextTexture;
-    TextureDataMap[R"(gui/character_menu/class_text.png)"] = data;
-}
-
 static void ResourcesInitialized() {
-    sdk::Resources::ResourcesInitialized = true;
-    InitClassText();
-
     while (!sdk::PlayerClass::AssetLoadQueue.empty()) {
         auto* moddedClass = sdk::PlayerClass::AssetLoadQueue.front();
         moddedClass->LoadAssets();
@@ -200,46 +183,9 @@ namespace sdk::PlayerClass {
     }
 
     ModdedClass* ModdedClass::LoadText() {
-        fs::path textPath = mod_path / "text.png";
-        if (!fs::exists(textPath)) {
-            playerClassLogger.LogError("text.png not found in: " + mod_path.string());
-            return this;
-        }
-
-        sf::Image textImage{};
-        std::string textPathStr = textPath.string();
-        if (!sdk::Resources::LoadImageFromFile(&textImage, &textPathStr)) {
-            playerClassLogger.LogError("Failed to load text.png for: " + name);
-            return this;
-        }
-
-        if (textImage.m_size.x != 64 || textImage.m_size.y != 64) {
-            playerClassLogger.LogWarning("Text icon for " + name + " is not 64x64 (found " +
-                std::to_string(textImage.m_size.x) + "x" +
-                std::to_string(textImage.m_size.y) + "), may look incorrect");
-        }
-
-        std::string textureKey = "gui/character_menu/class_text.png";
-        if (TextureDataMap.contains(textureKey)) {
-            TextureDataMap[textureKey].images.push_back(textImage);
-
-            sf::Image stitchedImage = sdk::Resources::StitchImageChunks(TextureDataMap[textureKey].images, 128, 64);
-
-            sf::Texture newTexture{};
-            sdk::Resources::TextureConstructor(&newTexture);
-            sf::Rect<int> rect{};
-            if (!sdk::Resources::LoadTextureFromImage(&newTexture, &stitchedImage, &rect)) {
-                playerClassLogger.LogError("Failed to update class texture for: " + name);
-                return this;
-            }
-
-            TextureDataMap[textureKey].texture = newTexture;
-        }
-        else {
-            playerClassLogger.LogError("Class texture not initialized, something went very wrong");
-            return this;
-        }
-        _textLoaded = true;
+        if (!_textLoaded && sdk::Resources::AppendTextureImage(
+            "gui/character_menu/class_text.png", (mod_path / "text.png").string(), 64))
+            _textLoaded = true;
         return this;
     }
 
@@ -343,6 +289,10 @@ namespace sdk::PlayerClass {
         return std::nullopt;
     }
 
+    int GetPlayableClassCount() {
+        return 5 + static_cast<int>(ModdedClassList.size());
+    }
+
     bool IsModdedClass(int gameIndex) {
         // Base classes are 0-6, modded classes start at 8+
         return gameIndex >= 8;
@@ -355,6 +305,8 @@ namespace sdk::PlayerClass {
         Utils::CreateHook(reinterpret_cast<void**>(reinterpret_cast<SetStartingAttributesFn>(moduleBaseAddress + 0x30C7D0)), &setStartingAttributesDetour, reinterpret_cast<void**>(&pOriginalSetStartingAttributes));
         
         static SafetyHookMid clasGfxPathSwitchHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x2C7FF7), classGfxPathDetour); // Line 46? of drawGameOverStats
+        static SafetyHookMid portraitClassSwitchHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x2C69DB), portraitClassSwitchDetour);
+        static SafetyHookMid portraitGfxPathHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x2C69F7), classGfxPathDetour);
         static SafetyHookMid classNameSwitchHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x318094), classNameSwitchDetour); // Line 389 of drawGameOverStats
         static SafetyHookMid drawCustomizeMenuFrameHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x31316C), drawCustomizeMenuFrameDetour); // Line 143 of DrawCustomizeMenu
         static SafetyHookMid setStartingItemHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x30C56E), setStartingItemDetour); // Line 859 of setStartingItems
