@@ -79,7 +79,7 @@ namespace sdk::UI {
     GuiWindow* CreatePanel(int x, int y, int w, int h, bool background) {
         auto window = static_cast<GuiWindow*>(Allocate(sizeof(GuiWindow)));
         ElementConstructor(window, GuiElementType::WINDOW, x, y, w, h);
-        window->vtable = reinterpret_cast<void*>(moduleBaseAddress + 0x71d158);
+        window->vtable = reinterpret_cast<GuiElement::VTable*>(moduleBaseAddress + 0x71d158);
         new (&window->elements) std::vector<GuiElement*>();
         window->hasBg = background;
         return window;
@@ -87,9 +87,7 @@ namespace sdk::UI {
 
     void Destroy(GuiElement* element) {
         if (!element) return;
-        using DestroyFn = void*(__thiscall*)(GuiElement*, uint);
-        auto vtable = static_cast<void**>(element->vtable);
-        reinterpret_cast<DestroyFn>(vtable[0])(element, 1);
+        element->vtable->destroy(element, 1);
     }
 
     void AddElement(std::vector<GuiElement*>& elements, GuiElement* element) {
@@ -130,32 +128,27 @@ namespace sdk::UI {
 
     void Action(GuiElement* element, bool down) {
         if (element->hidden || element->disabled) return;
-        using ActionFn = void(__thiscall*)(GuiElement*, bool);
-        reinterpret_cast<ActionFn>(static_cast<void**>(element->vtable)[1])(element, down);
+        element->vtable->action(element, down);
     }
 
     void MouseAction(GuiElement* element, int x, int y, bool down, bool leftButton) {
         if (element->hidden || element->disabled) return;
-        using MouseActionFn = void(__thiscall*)(GuiElement*, int, int, bool, bool);
-        reinterpret_cast<MouseActionFn>(static_cast<void**>(element->vtable)[2])(element, x, y, down, leftButton);
+        element->vtable->mouseAction(element, x, y, down, leftButton);
     }
 
     void Step(GuiElement* element, int mouseX, int mouseY) {
         if (element->hidden) return;
-        using StepFn = void(__thiscall*)(GuiElement*, int, int);
-        reinterpret_cast<StepFn>(static_cast<void**>(element->vtable)[3])(element, mouseX, mouseY);
+        element->vtable->step(element, mouseX, mouseY);
     }
 
     void AfterStep(GuiElement* element, bool leftHeld, bool rightHeld) {
         if (element->hidden) return;
-        using AfterStepFn = void(__thiscall*)(GuiElement*, bool, bool);
-        reinterpret_cast<AfterStepFn>(static_cast<void**>(element->vtable)[4])(element, leftHeld, rightHeld);
+        element->vtable->afterStep(element, leftHeld, rightHeld);
     }
 
     void Draw(GuiElement* element, sf::RenderTarget* target) {
         if (element->hidden) return;
-        using DrawFn = void(__thiscall*)(GuiElement*, sf::RenderTarget*);
-        reinterpret_cast<DrawFn>(static_cast<void**>(element->vtable)[5])(element, target);
+        element->vtable->draw(element, target);
     }
 
     void Draw(GuiElement* element, sf::RenderTarget* target, sf::View& view) {
@@ -183,8 +176,8 @@ namespace sdk::UI {
             &clientStepDetour, reinterpret_cast<void**>(&pOriginalClientStep));
         Utils::CreateHook(reinterpret_cast<void*>(moduleBaseAddress + 0x14ae70),
             &clientDestroyDetour, reinterpret_cast<void**>(&pOriginalClientDestroy));
-        static SafetyHookMid drawHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x163222), drawUIDetour);
-        if (!pOriginalPollAction || !pOriginalClientStep || !pOriginalClientDestroy || !drawHook)
+        static SafetyHookMid drawHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x163222), drawUIDetour);
+        if (!pOriginalPollAction || !pOriginalClientStep || !pOriginalClientDestroy)
             Multiplayer::FailInitialization();
     }
     SDK_REGISTER(InitUI);

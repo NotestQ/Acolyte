@@ -15,11 +15,10 @@ namespace sdk::Resources {
 	std::vector<sf::Image> SeparateImageChunks(sf::Image& image, int chunkSize);
 	sf::Image StitchImageChunks(std::vector<sf::Image> images, int width, int chunkSize);
 
-	// Call once resources are ready (or from OnResourceInitialized).
-	// Captures the texture's existing square frames without resetting earlier additions.
+	// Call from OnResourceInitialized or UI::OnStep
+	// Calling InitTextureData again keeps any frames you've added
 	ACOLYTE_API bool InitTextureData(const std::string& texturePath, int chunkSize);
-	// Initializes on first use, appends one image, and updates the texture override.
-	// Preserves the original sheet width; the image must be chunkSize by chunkSize.
+	// Appends a chunkSize by chunkSize frame and keeps the original sheet width
 	ACOLYTE_API bool AppendTextureImage(const std::string& texturePath, const std::string& imagePath, int chunkSize);
 
 	using CopyToImageFn = sf::Image* (__thiscall*)(sf::Texture* textureThis, sf::Image* __return_storage_ptr__);
@@ -27,9 +26,9 @@ namespace sdk::Resources {
 	using LoadTextureFromImageFn = bool(__thiscall*)(sf::Texture* textureThis, sf::Image* param_1, sf::Rect<int>* param_2);
 	using SaveImageToFileFn = bool(__thiscall*)(sf::Image* imageThis, std::string* param_1);
 	using TextureConstructorFn = sf::Texture* (__thiscall*)(sf::Texture* textureThis);
-	using TextureDestructorFn = void (__thiscall*)(sf::Texture* textureThis);
+	using TextureDestructorFn = void(__thiscall*)(sf::Texture* textureThis);
 	using LoadTextureFromFileFn = bool(__thiscall*)(sf::Texture* textureThis, std::string* filePath, sf::Rect<int>* size);
-	using GetTextureFn = sf::Texture* (__cdecl*)(std::basic_string<char> filePath, bool param_2);
+	using GetTextureFn = sf::Texture* (__cdecl*)(std::string filePath, bool param_2);
 
 	ACOLYTE_API extern CopyToImageFn CopyToImage;
 	ACOLYTE_API extern LoadImageFromFileFn LoadImageFromFile;

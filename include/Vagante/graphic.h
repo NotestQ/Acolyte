@@ -39,7 +39,17 @@ struct FancyText {
 };
 
 struct GuiElement {
-    void* vtable;
+    struct VTable {
+        void* (__thiscall* destroy)(GuiElement* elementThis, uint flags);
+        void (__thiscall* action)(GuiElement* elementThis, bool down);
+        void (__thiscall* mouseAction)(GuiElement* elementThis, int x, int y, bool down, bool leftButton);
+        void (__thiscall* step)(GuiElement* elementThis, int mouseX, int mouseY);
+        void (__thiscall* afterStep)(GuiElement* elementThis, bool leftHeld, bool rightHeld);
+        void (__thiscall* draw)(GuiElement* elementThis, sf::RenderTarget* target);
+        void (__thiscall* setOffset)(GuiElement* elementThis, float x, float y);
+    };
+
+    VTable* vtable;
     bool hover;
     GuiElementType type;
     sf::Vector2<float> cursorOffset;

@@ -1,6 +1,7 @@
 // https://github.com/mrexodia/perfect-dll-proxy
 #include "inc/core.h"
 #include <Windows.h>
+#include <safetyhook.hpp>
 
 #ifdef _WIN64
 #define DLLPATH "\\\\.\\GLOBALROOT\\SystemRoot\\System32\\version.dll"
@@ -26,11 +27,17 @@
 #pragma comment(linker, "/EXPORT:VerQueryValueA=" DLLPATH ".VerQueryValueA")
 #pragma comment(linker, "/EXPORT:VerQueryValueW=" DLLPATH ".VerQueryValueW")
 
+void initializeBeforeMainDetour(SafetyHookContext& ctx) {
+    init();
+}
+
 BOOL WINAPI DllMain(HMODULE hModule, DWORD callReason, LPVOID lpvReserved) {
 
     if (callReason == DLL_PROCESS_ATTACH) {
-        HANDLE initHandle = CreateThread(NULL, 0, (LPTHREAD_START_ROUTINE)init, NULL, 0, NULL);
-        if (initHandle) CloseHandle(initHandle);
+        // Initialize before the game allocates its player arrays
+        auto moduleBaseAddress = (uintptr_t)GetModuleHandleA(NULL);
+        static SafetyHookMid mainHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x2A0570), initializeBeforeMainDetour);
+        if (!mainHook) return FALSE;
     }
 
     return TRUE;

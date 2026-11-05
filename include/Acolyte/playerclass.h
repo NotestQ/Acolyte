@@ -55,10 +55,11 @@ namespace sdk::PlayerClass {
         bool _textLoaded = false;
         bool _iconLoaded = false;
 
+        // Call from OnResourceInitialized or UI::OnStep
         ACOLYTE_API ModdedClass* LoadPalettes();
         ACOLYTE_API ModdedClass* LoadText();
         ACOLYTE_API ModdedClass* LoadIcon();
-        // Calls LoadText, LoadIcon then LoadPalettes. Queues if resources are not ready.
+        // You can call this before resources are ready, it queues the text, icon and palettes
         ACOLYTE_API ModdedClass* LoadAssets();
 
         // Helper to set multiple stats at once and be able to chain call functions
@@ -71,7 +72,6 @@ namespace sdk::PlayerClass {
 
     inline std::unordered_map<std::string, ModdedClass> ModdedClassMap;
     inline std::vector<std::string> ModdedClassList{}; // Add 7, 6 if not counting skeleton
-    inline std::queue<ModdedClass*> AssetLoadQueue{};
 
     // New player class using displayName for both folder and display
     // Expects: <calling_mod_folder>/classes/<displayName>/text.png and /1 - 4

@@ -2,7 +2,7 @@
 #include <Acolyte/exports.h>
 
 namespace sdk::Lobby {
-    // Set on the game thread, changes apply the next time we host a lobby
+    // Changes apply the next time we host a lobby
     ACOLYTE_API int GetMaxPlayers();
     ACOLYTE_API void SetMaxPlayers(int players);
     ACOLYTE_API int GetSupportedPlayers();

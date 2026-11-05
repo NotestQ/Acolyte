@@ -6,10 +6,10 @@ namespace Multiplayer {
     constexpr unsigned maxPlayers = 99;
 
     bool InitMultiplayer();
-    bool InitGameplay();
+    void InitGameplay();
     bool InitPalettes();
     bool InitSaves();
-    bool InitStorage();
+    void InitStorage();
     bool ApplyPlayerLimits();
     void FailInitialization();
 }

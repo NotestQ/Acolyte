@@ -14,28 +14,13 @@
 static uintptr_t moduleBaseAddress = (uintptr_t)GetModuleHandleA(NULL);
 static Logger multiplayerLogger("Acolyte");
 
-using GameAllocateFn = void*(__cdecl*)(size_t size);
-using AddEntityFn = void(__thiscall*)(Level* levelThis, std::shared_ptr<Entity>& entity);
 using UpdateMenuFn = void(__thiscall*)(PlayerMenu* menuThis);
 using DrawHudFn = void(__thiscall*)(PlayerMenu* menuThis, sf::RenderTarget* renderTarget);
-// This constructor takes this in ECX, x/y in XMM2/XMM3 and pops one stack argument.
-// The unused arguments put x/y in the right registers.
-using GraveConstructorFn = Grave*(__vectorcall*)(Grave* graveThis, void*, void*, float, float, float x, float y);
 using RandomPaletteFn = int(__thiscall*)(PlayerCustomizeMenu* customizeThis, unsigned slot, int character);
 
-static GameAllocateFn GameAllocate = nullptr;
-static AddEntityFn AddEntity = nullptr;
 static sdk::PlayerClass::GetPlayerClassFn GetPlayerClass = nullptr;
 static UpdateMenuFn UpdateClassBackgrounds = nullptr;
 static UpdateMenuFn UpdateClassPalettes = nullptr;
-static GraveConstructorFn GraveConstructor = nullptr;
-
-static void DestroyGrave(Grave* grave) {
-    using DestroyFn = void*(__thiscall*)(Grave* graveThis, uint flags);
-    // The game's destructor also releases the sprite and frees the allocation.
-    auto vtable = static_cast<void**>(grave->vtable);
-    reinterpret_cast<DestroyFn>(vtable[0])(grave, 1);
-}
 
 static unsigned __cdecl CountConnections(Server* server) {
     unsigned count = 0;
@@ -46,7 +31,6 @@ static unsigned __cdecl CountConnections(Server* server) {
     return count;
 }
 
-// We replace the counting loop here, so resume at the game's connection limit check
 void countSteamConnectionsDetour(SafetyHookContext& ctx) {
     Server* server = reinterpret_cast<Server*>(ctx.ebx);
     ctx.ecx = CountConnections(server);
@@ -55,7 +39,7 @@ void countSteamConnectionsDetour(SafetyHookContext& ctx) {
 }
 
 void countIpConnectionsDetour(SafetyHookContext& ctx) {
-    // Skip the same-IP rejection too, so players can share a network.
+    // Skip the duplicate IP check so two players can join from the same network
     Server* server = reinterpret_cast<Server*>(ctx.edi);
     ctx.ecx = CountConnections(server);
     ctx.esi = reinterpret_cast<uintptr_t>(server->clientData.data());
@@ -67,13 +51,17 @@ void finishInputResetDetour(SafetyHookContext& ctx) {
     for (unsigned i = 4; i < Multiplayer::playerSlots; ++i) {
         auto& controller = input->controllers[i];
         controller.slot = i;
-        controller.enabled = false; // Server::onReceiveInput enables this later.
-        controller.binding = false; // Remote slots must not bind local devices.
+        controller.enabled = false; // Server::onReceiveInput enables this when the player joins
+        controller.binding = false;
     }
 }
 
-// Local Input may have been created with four controllers before Acolyte loads.
-// Online clients use slot zero for their own input.
+// Input configs only contain the four local controllers, the extra slots are for network input
+void boundInputConfigControllersDetour(SafetyHookContext& ctx) {
+    if (ctx.eax > 4) ctx.eax = 4;
+}
+
+// Players 5 and up use controller 0 on their own client
 void boundLocalControllerDetour(SafetyHookContext& ctx) {
     Client* client = reinterpret_cast<Client*>(ctx.edi);
     if (ctx.ecx >= 4 || ctx.ecx >= client->input->controllers.size())
@@ -82,7 +70,7 @@ void boundLocalControllerDetour(SafetyHookContext& ctx) {
 
 void initializeMenuAppearanceDetour(SafetyHookContext& ctx) {
     PlayerMenu* menu = reinterpret_cast<PlayerMenu*>(ctx.esi);
-    // Only the five base classes exist here. GetPlayerClass adds the modded classes later.
+    // Only the five base classes are available until GetPlayerClass adds the modded ones
     menu->playerClass = (menu->playerIndex / 4) % 5;
     menu->playerPalette = menu->playerIndex % 4;
 }
@@ -97,11 +85,9 @@ static unsigned GetUsedPalettes(std::vector<std::shared_ptr<Player>>& players, i
 }
 
 static int ChooseJoinAppearance(PlayerMenu* menu, int* randomizedClass = nullptr) {
-    // GetPlayerClass adds any modded classes before we read the list.
     int menuClass = GetPlayerClass(menu, nullptr);
     int currentClass = randomizedClass ? *randomizedClass : menuClass;
-    int randomPalette = -1;
-    auto& palette = randomizedClass ? randomPalette : menu->playerPalette;
+    int palette = randomizedClass ? -1 : menu->playerPalette;
     if (sdk::Lobby::GetDuplicatePalettes()) return palette < 0 ? palette : palette % 4;
     if (currentClass == CLASS_RANDOM) return palette;
 
@@ -121,17 +107,20 @@ static int ChooseJoinAppearance(PlayerMenu* menu, int* randomizedClass = nullptr
         if (character == CLASS_RANDOM) continue;
         unsigned used = GetUsedPalettes(players, character);
         if (used == 0xF) continue;
-        // Keep the random palette option if this class still has room.
+        // A negative palette means random
         if (step == 0 && palette < 0) return palette;
         unsigned candidate = step == 0 ? static_cast<unsigned>(palette) % 4 : 0;
         while (used & (1u << candidate)) candidate = (candidate + 1) % 4;
         palette = static_cast<int>(candidate);
         if (randomizedClass) *randomizedClass = character;
-        else if (step != 0) {
-            menu->playerClass = index;
-            menu->updateTextContainer = true;
-            UpdateClassBackgrounds(menu);
-            UpdateClassPalettes(menu);
+        else {
+            menu->playerPalette = palette;
+            if (step != 0) {
+                menu->playerClass = index;
+                menu->updateTextContainer = true;
+                UpdateClassBackgrounds(menu);
+                UpdateClassPalettes(menu);
+            }
         }
         return palette;
     }
@@ -143,8 +132,13 @@ int __fastcall selectRandomPaletteDetour(PlayerCustomizeMenu* customizeThis, voi
     if (sdk::Lobby::GetDuplicatePalettes()) return std::rand() % 4;
     auto& players = *customizeThis->players;
     unsigned used = GetUsedPalettes(players, character, slot);
-    // randomPalette would divide by zero if all four palettes were taken.
+    // If all four palettes are taken just pick one, randomPalette would divide by zero
     return used == 15 ? std::rand() % 4 : pOriginalRandomPalette(customizeThis, slot, character);
+}
+
+void selectPaletteDetour(SafetyHookContext& ctx) {
+    // ECX becomes the player count, zero skips the duplicate check
+    if (sdk::Lobby::GetDuplicatePalettes()) ctx.ecx = 0;
 }
 
 void selectRandomClassDetour(SafetyHookContext& ctx) {
@@ -155,19 +149,19 @@ void selectRandomClassDetour(SafetyHookContext& ctx) {
         ChooseJoinAppearance(menus[slot].get(), reinterpret_cast<int*>(ctx.ebp - 0x1C));
 }
 
-// The original loop gives up after four palettes. Check the next class too.
+// The game gives up after four palettes, try the next class if they're all taken
 void selectJoinAppearanceDetour(SafetyHookContext& ctx) {
-    ctx.edi = ChooseJoinAppearance(reinterpret_cast<PlayerMenu*>(ctx.ebx)); // addPlayer reads the palette from EDI.
-    *reinterpret_cast<unsigned*>(ctx.ebp - 0x10) = 0; // Later reused for the background argument.
+    ctx.edi = ChooseJoinAppearance(reinterpret_cast<PlayerMenu*>(ctx.ebx)); // addPlayer reads the palette from EDI
+    *reinterpret_cast<unsigned*>(ctx.ebp - 0x10) = 0; // Reused for the background later
     ctx.eip = moduleBaseAddress + 0x3091E8;
 }
 
 DrawHudFn pOriginalDrawHud = nullptr;
-// Extra players use the first HUD position on their own screen.
 void __fastcall selectVisibleHudDetour(PlayerMenu* menuThis, void*, sf::RenderTarget* renderTarget) {
     auto playerIndex = menuThis->playerIndex;
     auto localPlayer = static_cast<unsigned>(menuThis->networkedPlayerIndex);
     if (menuThis->networked) {
+        // Players 5 and up see their own HUD in player 1's place
         if (playerIndex >= 4 && playerIndex != localPlayer) return;
         if (playerIndex == 0 && localPlayer >= 4) return;
     } else if (playerIndex >= 4) {
@@ -176,33 +170,12 @@ void __fastcall selectVisibleHudDetour(PlayerMenu* menuThis, void*, sf::RenderTa
     pOriginalDrawHud(menuThis, renderTarget);
 }
 
-// Change the position calculation, keeping playerIndex for inventory and customization.
+// Only change the HUD position, inventory and customization still need playerIndex
 void positionExtraHudDetour(SafetyHookContext& ctx) {
     if (ctx.eax >= 4) ctx.eax = 0;
 }
 
-void addRoomGraveDetour(SafetyHookContext& ctx) {
-    // The original shared_ptr has been constructed at this point.
-    Level* level = *reinterpret_cast<Level**>(ctx.ebp - 0x70);
-    Entity* original = *reinterpret_cast<Entity**>(ctx.ebp - 0x6C);
-    if (!level || !original || original->type != TYPE_GRAVE) return;
-
-    unsigned count = 0;
-    if (level->players) {
-        for (auto& player : *level->players)
-            count += player != nullptr;
-    }
-    // Add another grave at each marker for every extra group of four players.
-    for (unsigned group = 1; group * 4 < count; ++group) {
-        auto grave = static_cast<Grave*>(GameAllocate(sizeof(Grave)));
-        // Keep the extra graves beside the original, so they don't end up inside walls.
-        GraveConstructor(grave, nullptr, nullptr, 0.0f, 0.0f, original->x + 8.0f, original->y);
-        std::shared_ptr<Entity> shared(grave, DestroyGrave);
-        AddEntity(level, shared);
-    }
-}
-
-// The original loop reads graves[deadCount] even for living players.
+// The game reads graves[deadCount] even when the player is alive
 void boundGraveAccessDetour(SafetyHookContext& ctx) {
     GameEngine* engine = reinterpret_cast<GameEngine*>(ctx.ebx);
     if (ctx.edx >= engine->graves.size()) ctx.eip = moduleBaseAddress + 0x1C91E8;
@@ -244,7 +217,7 @@ namespace Multiplayer {
         // Server::start: pending vector fill
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x363BC4 + 1), &playerSlots, sizeof(playerSlots));
 
-        // Native ClientConnectionData* vector reallocation (both server arrays)
+        // clientData and pendingClientData reallocation
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x3721C2, 2, playerSlots);
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x3721C7 + 1), &connectionPointerBytes, sizeof(connectionPointerBytes));
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x37222D + 1), &playerSlots, sizeof(playerSlots));
@@ -263,30 +236,33 @@ namespace Multiplayer {
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x370EBA, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x3710D2, 2, playerSlots);
 
+        // Inventory events need an acknowledgement bit for every slot, including disconnected players
+        success &= Utils::PatchByteAt(moduleBaseAddress + 0x208B9D, 1, playerSlots);
+
         // GameEngine::GameEngine: PlayerMenu vector
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x1C0CC9, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x1C0CF4, 2, playerSlots);
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x1C0D08 + 1), &playerSlots, sizeof(playerSlots));
 
-        // Native PlayerMenu vector reallocation
+        // PlayerMenu vector reallocation
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x1CC1B7, 2, playerSlots);
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x1CC1BC + 1), &sharedMenuBytes, sizeof(sharedMenuBytes));
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x1CC222 + 1), &playerSlots, sizeof(playerSlots));
 
-        // GameEngine::cleanUp: player vector, including native reallocation
+        // GameEngine::cleanUp: player vector and reallocation
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x1C1376, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x1C139D, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x1CC164, 1, playerSlots);
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x1C13B2 + 1), &playerSlots, sizeof(playerSlots));
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x1CC106 + 1), &playerSlots, sizeof(playerSlots));
 
-        // GameEngine::newGame: run statistics and existing player reconstruction
+        // GameEngine::newGame: runStats and recreating players
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x1C1619, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x1C1640, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x1C1F1F, 2, playerSlots);
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x1C1651 + 1), &playerSlots, sizeof(playerSlots));
 
-        // Native runStats vector reallocation
+        // runStats reallocation
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x3BE972, 2, playerSlots);
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x3BE977 + 1), &playerSlots, sizeof(playerSlots));
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x3BE9EE + 1), &playerSlots, sizeof(playerSlots));
@@ -306,7 +282,7 @@ namespace Multiplayer {
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x3098D4 + 1), &playerSlots, sizeof(playerSlots));
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x3098F8 + 1), &playerSlots, sizeof(playerSlots));
 
-        // Input::reset: per-controller timers (hardware joystick limits stay at four)
+        // Input::reset: controller timers, still only four local joysticks
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x1FD497 + 1), &playerSlots, sizeof(playerSlots));
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x1FD4D3 + 1), &playerSlots, sizeof(playerSlots));
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x1FD4E5 + 1), &playerSlots, sizeof(playerSlots));
@@ -316,7 +292,7 @@ namespace Multiplayer {
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x1FD51E, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x1FD52A, 1, playerSlots);
 
-        // Input::reset: ControlScheme vector for server-side remote input
+        // Input::reset: ControlScheme vector for remote players on the server
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x1FD60E, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x1FD649, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x207795, 2, playerSlots);
@@ -325,7 +301,7 @@ namespace Multiplayer {
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x1FD61B + 2), &controlSchemeBytes, sizeof(controlSchemeBytes));
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x2078CE + 2), &controlSchemeBytes, sizeof(controlSchemeBytes));
 
-        // Client::PlayerInformation vector: resize and native reallocation
+        // Client::PlayerInformation vector: resize and reallocation
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x169F32, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x169F84, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x171288, 2, playerSlots);
@@ -334,11 +310,11 @@ namespace Multiplayer {
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x169F37 + 2), &playerInformationBytes, sizeof(playerInformationBytes));
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x171409 + 2), &playerInformationBytes, sizeof(playerInformationBytes));
 
-        // Client: decode the expanded roster and refresh names/avatars
+        // Client: read all players and update their names and avatars
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x14E7A8 + 2), &playerInformationBytes, sizeof(playerInformationBytes));
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x14D817 + 2), &playerInformationBytes, sizeof(playerInformationBytes));
 
-        // Bonfire: healing records, personal healing totals and player acceptance.
+        // Give each player a healing slot at the bonfire
         success &= Utils::PatchByteAt(moduleBaseAddress + 0xFF6B6, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0xFF6DD, 2, playerSlots);
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0xFF6F0 + 1), &playerSlots, sizeof(playerSlots));
@@ -351,10 +327,15 @@ namespace Multiplayer {
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0xFF76A + 1), &playerSlots, sizeof(playerSlots));
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x1023FF, 2, playerSlots);
 
-        // Client-side grave revival cost and knockback accept all online slots.
+        // Use playerSlots for "not found" here, otherwise Bonfire::step makes player 5 stand back up
+        success &= Utils::PatchByteAt(moduleBaseAddress + 0x101B01, 2, playerSlots);
+        success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x101B06 + 1), &playerSlots, sizeof(playerSlots));
+        success &= Utils::PatchByteAt(moduleBaseAddress + 0xFFC6D, 2, playerSlots);
+
+        // Grave revival cost and knockback on the client
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x761F7, 2, playerSlots);
 
-        // PlayerMod: independent trigger counts instead of aliasing player four.
+        // PlayerMod: extra players need their own trigger counts
         success &= Utils::PatchByteAt(moduleBaseAddress + 0xD5A67, 2, playerSlots);
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0xD5A6C + 3), &triggerCountBytes, sizeof(triggerCountBytes));
         success &= Utils::PatchByteAt(moduleBaseAddress + 0xD5A8E, 2, playerSlots);
@@ -365,33 +346,29 @@ namespace Multiplayer {
     }
 
     bool InitMultiplayer() {
-        GraveConstructor = reinterpret_cast<GraveConstructorFn>(moduleBaseAddress + 0x75540);
-        GameAllocate = reinterpret_cast<GameAllocateFn>(moduleBaseAddress + 0x4CCFA2);
-        AddEntity = reinterpret_cast<AddEntityFn>(moduleBaseAddress + 0x24AFC0);
         GetPlayerClass = reinterpret_cast<sdk::PlayerClass::GetPlayerClassFn>(moduleBaseAddress + 0x31E430);
         UpdateClassBackgrounds = reinterpret_cast<UpdateMenuFn>(moduleBaseAddress + 0x31CE80);
         UpdateClassPalettes = reinterpret_cast<UpdateMenuFn>(moduleBaseAddress + 0x31D030);
 
-        static SafetyHookMid steamConnectionsHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x36B076), countSteamConnectionsDetour);
-        static SafetyHookMid ipConnectionsHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x36B70F), countIpConnectionsDetour);
-        static SafetyHookMid inputResetHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x1FD91C), finishInputResetDetour);
-        static SafetyHookMid localControllerHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x1514FE), boundLocalControllerDetour);
-        static SafetyHookMid menuAppearanceHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x30DDA6), initializeMenuAppearanceDetour);
-        static SafetyHookMid joinAppearanceHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x309191), selectJoinAppearanceDetour);
-        static SafetyHookMid randomClassHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x3088B5), selectRandomClassDetour);
-        static SafetyHookMid hudPositionHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x30E614), positionExtraHudDetour);
-        static SafetyHookMid roomGraveHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x35AA40), addRoomGraveDetour);
-        static SafetyHookMid graveAccessHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x1C9015), boundGraveAccessDetour);
-        static SafetyHookMid finishGravesHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x1C911D), finishGravesDetour);
-        // The zero-player branch enters the cleanup loop directly.
-        static SafetyHookMid emptyGravesHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x1C9129), finishGravesDetour);
+        static SafetyHookMid steamConnectionsHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36B076), countSteamConnectionsDetour);
+        static SafetyHookMid ipConnectionsHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36B70F), countIpConnectionsDetour);
+        static SafetyHookMid inputResetHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1FD91C), finishInputResetDetour);
+        static SafetyHookMid inputLoadHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x200BF4), boundInputConfigControllersDetour);
+        static SafetyHookMid inputSaveHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1FFFBF), boundInputConfigControllersDetour);
+        static SafetyHookMid inputLegacyLoadHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x20182F), boundInputConfigControllersDetour);
+        static SafetyHookMid localControllerHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1514FE), boundLocalControllerDetour);
+        static SafetyHookMid menuAppearanceHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x30DDA6), initializeMenuAppearanceDetour);
+        static SafetyHookMid joinAppearanceHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x309191), selectJoinAppearanceDetour);
+        static SafetyHookMid selectPaletteHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x31DF92), selectPaletteDetour);
+        static SafetyHookMid randomClassHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x3088B5), selectRandomClassDetour);
+        static SafetyHookMid hudPositionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x30E614), positionExtraHudDetour);
+        static SafetyHookMid graveAccessHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1C9015), boundGraveAccessDetour);
+        static SafetyHookMid finishGravesHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1C911D), finishGravesDetour);
+        // With no players, the game jumps straight to the cleanup loop
+        static SafetyHookMid emptyGravesHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1C9129), finishGravesDetour);
 
-        if (!steamConnectionsHook || !ipConnectionsHook || !inputResetHook || !localControllerHook ||
-            !menuAppearanceHook || !joinAppearanceHook || !randomClassHook || !hudPositionHook || !roomGraveHook ||
-            !graveAccessHook || !finishGravesHook || !emptyGravesHook || !InitGameplay() || !InitStorage()) {
-            multiplayerLogger.LogError("SafetyHook installation failed.");
-            return false;
-        }
+        InitGameplay();
+        InitStorage();
 
         Utils::CreateHook(reinterpret_cast<void*>(moduleBaseAddress + 0x30E4A0),
             &selectVisibleHudDetour, reinterpret_cast<void**>(&pOriginalDrawHud));

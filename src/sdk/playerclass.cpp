@@ -2,8 +2,10 @@
 #include <Acolyte/resources.h>
 #include <Acolyte/utils.h>
 #include <Acolyte/logger.h>
+#include <Acolyte/ui.h>
 #include <filesystem>
 #include <optional>
+#include <algorithm>
 #include <safetyhook.hpp>
 #include <sdk_registry.h>
 #undef LoadIcon
@@ -12,10 +14,11 @@ namespace fs = std::filesystem;
 
 static Logger playerClassLogger("Acolyte");
 static const uintptr_t moduleBaseAddress = (uintptr_t)GetModuleHandleA(NULL);
+sdk::PlayerClass::GetPlayerClassFn pOriginalGetPlayerClass = nullptr;
 
 void drawCustomizeMenuFrameDetour(SafetyHookContext& ctx) {
     PlayerMenu* menu = reinterpret_cast<PlayerMenu*>(ctx.esi);
-    int playerClassIndex = menu->availableClasses.at(menu->playerClass);
+    int playerClassIndex = pOriginalGetPlayerClass(menu, NULL);
     // Corrects text.png wrapping, player class 6 (random) will always be at the fifth position
     // 8 and above will always be two behind
     if (playerClassIndex == 6) playerClassIndex = 5;
@@ -61,6 +64,19 @@ void portraitClassSwitchDetour(SafetyHookContext& ctx) {
         ctx.eip = moduleBaseAddress + 0x2C69EB;
 }
 
+void restartPlayerClassDetour(SafetyHookContext& ctx) {
+    PlayerClass* classes = reinterpret_cast<PlayerClass*>(ctx.edx);
+    if (sdk::PlayerClass::GetByIndex(classes[ctx.esi]))
+        ctx.eip += 10; // Skip the comparison with NUM_PLAYER_CLASSES and the jump that clears this slot
+}
+
+void checkRestartClassesDetour(SafetyHookContext& ctx) {
+    PlayerClass* classes = reinterpret_cast<PlayerClass*>(ctx.edx);
+    // Client::newGame falls back to Rogue if it doesn't recognize any of the classes
+    if (sdk::PlayerClass::GetByIndex(classes[ctx.eax]))
+        ctx.eip = moduleBaseAddress + 0x1506D1;
+}
+
 void setStartingItemDetour(SafetyHookContext& ctx) {
 #define breakSwitch ctx.eip = moduleBaseAddress + 0x30B4E0; return; // Equivalent of a break; on the switch
 
@@ -91,24 +107,33 @@ std::string* __fastcall getClassNameDetour(std::string* returnStoragePtr, int cl
     return ret;
 }
 
-sdk::PlayerClass::GetPlayerClassFn pOriginalGetPlayerClass = nullptr;
 int __fastcall getPlayerClassDetour(PlayerMenu* menuThis, void*) {
     auto& playerClassVector = menuThis->availableClasses;
-    int baseClassAmount = 6;
     auto vectorSize = playerClassVector.size();
-    auto wishSize = baseClassAmount + sdk::PlayerClass::ModdedClassList.size();
+    bool hasRandom = vectorSize > 0 && playerClassVector.back() == CLASS_RANDOM;
+    auto classAmount = vectorSize - (hasRandom ? 1 : 0);
+    size_t moddedClassAmount = 0;
 
-    if (vectorSize < wishSize) {
+    if (classAmount > 0) {
+        auto lastClass = sdk::PlayerClass::GetByIndex(playerClassVector[classAmount - 1]);
+        if (lastClass)
+            moddedClassAmount = (*lastClass)->moddedindex + 1;
+    }
+
+    if (moddedClassAmount < sdk::PlayerClass::ModdedClassList.size()) {
+        auto wishSize = vectorSize + sdk::PlayerClass::ModdedClassList.size() - moddedClassAmount;
         playerClassVector.reserve(wishSize); // Reserve so we can push back without the vector resizing every time, micro optimization
-        // Remove and re-insert 6 (CLASS_RANDOM) at the end
-        playerClassVector.pop_back();
+        // Keep Random last if it's unlocked
+        if (hasRandom)
+            playerClassVector.pop_back();
 
-        // Insert class based on pre-calculated index
-        for (auto i = vectorSize - baseClassAmount; i < sdk::PlayerClass::ModdedClassList.size(); i++) {
-            sdk::PlayerClass::ModdedClass newClass = sdk::PlayerClass::ModdedClassMap[sdk::PlayerClass::ModdedClassList.at(i)];
+        for (auto i = moddedClassAmount; i < sdk::PlayerClass::ModdedClassList.size(); i++) {
+            auto& newClass = sdk::PlayerClass::ModdedClassMap.at(sdk::PlayerClass::ModdedClassList.at(i));
             playerClassVector.push_back(static_cast<PlayerClass>(newClass.index));
         }
-        playerClassVector.push_back(CLASS_RANDOM);
+
+        if (hasRandom)
+            playerClassVector.push_back(CLASS_RANDOM);
     }
 
     return pOriginalGetPlayerClass(menuThis, NULL);
@@ -134,16 +159,27 @@ void __cdecl setStartingAttributesDetour(std::shared_ptr<Player> player, void* u
     pOriginalSetStartingAttributes(player, unused);
 }
 
-static void ResourcesInitialized() {
-    while (!sdk::PlayerClass::AssetLoadQueue.empty()) {
-        auto* moddedClass = sdk::PlayerClass::AssetLoadQueue.front();
-        moddedClass->LoadAssets();
-        sdk::PlayerClass::AssetLoadQueue.pop();
-    }
-}
-
 namespace sdk::PlayerClass {
+    static std::vector<ModdedClass*> assetLoadQueue;
+
+    static void LoadQueuedAssets() {
+        if (!sdk::Resources::ResourcesInitialized) return;
+
+        std::vector<ModdedClass*> pending;
+        pending.swap(assetLoadQueue);
+        for (auto* moddedClass : pending) {
+            if (!moddedClass->_textLoaded)
+                moddedClass->LoadText();
+            if (!moddedClass->_iconLoaded)
+                moddedClass->LoadIcon();
+            if (!moddedClass->_paletteLoaded)
+                moddedClass->LoadPalettes();
+        }
+    }
+
     ModdedClass* ModdedClass::LoadPalettes() {
+        if (!sdk::Resources::ResourcesInitialized) return this;
+
         for (int paletteI = 1; paletteI <= 4; paletteI++) {
             fs::path palettePath = mod_path / std::to_string(paletteI);
             if (!fs::exists(palettePath)) {
@@ -190,17 +226,7 @@ namespace sdk::PlayerClass {
     }
 
     ModdedClass* ModdedClass::LoadAssets() {
-        if (!sdk::Resources::ResourcesInitialized) {
-            AssetLoadQueue.push(this);
-            return this;
-        }
-
-        if (!_textLoaded)
-            LoadText();
-        if (!_iconLoaded)
-            LoadIcon();
-        if (!_paletteLoaded)
-            LoadPalettes();
+        assetLoadQueue.push_back(this);
         return this;
     }  
    
@@ -311,7 +337,11 @@ namespace sdk::PlayerClass {
         static SafetyHookMid drawCustomizeMenuFrameHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x31316C), drawCustomizeMenuFrameDetour); // Line 143 of DrawCustomizeMenu
         static SafetyHookMid setStartingItemHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x30C56E), setStartingItemDetour); // Line 859 of setStartingItems
 
-        sdk::Resources::OnResourceInitialized.connect(ResourcesInitialized);
+        static SafetyHookMid restartClassHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1C1B0D), restartPlayerClassDetour);
+        static SafetyHookMid checkRestartClassesHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1506C1), checkRestartClassesDetour);
+
+        sdk::Resources::OnResourceInitialized.connect(LoadQueuedAssets);
+        sdk::UI::OnStep.connect([](Client*, Input*) { LoadQueuedAssets(); });
 
         playerClassLogger.LogDebug("PlayerClass system initialized!");
     }

@@ -19,7 +19,7 @@ target_sources(Acolyte
   PRIVATE
     $<TARGET_OBJECTS:safetyhook>
 )
-target_include_directories(Acolyte PRIVATE ${CMAKE_SOURCE_DIR}/lib/safetyhook)
+target_include_directories(Acolyte PUBLIC ${CMAKE_SOURCE_DIR}/lib/safetyhook)
 
 # Link MinHook
 add_library(MinHook STATIC IMPORTED)
@@ -47,4 +47,7 @@ add_custom_command(
     COMMAND ${CMAKE_COMMAND} -E copy_directory
         "${CMAKE_SOURCE_DIR}/include"
         "${CMAKE_SOURCE_DIR}/out/release/include"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        "${CMAKE_SOURCE_DIR}/lib/safetyhook/safetyhook.hpp"
+        "${CMAKE_SOURCE_DIR}/out/release/include/safetyhook.hpp"
 )

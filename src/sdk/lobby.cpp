@@ -11,7 +11,6 @@
 #include "multiplayer/multiplayer.h"
 
 static uintptr_t moduleBaseAddress = (uintptr_t)GetModuleHandleA(NULL);
-static int supportedPlayers = 4;
 static int maxPlayers = 4;
 static bool duplicatePalettes = false;
 static std::atomic<int> hostedMaxPlayers = 4;
@@ -27,14 +26,14 @@ using LobbyJoinedFn = void(__thiscall*)(Client* clientThis, LobbyEnter_t* result
 static LobbyJoinedFn LobbyJoined = nullptr;
 
 static std::string& GetNetworkVersion() {
-    // Keep the game's own version for saves and use a separate multiplayer version.
+    // Saves use the game's version string too, keep a separate copy for multiplayer
     static std::string version = *reinterpret_cast<std::string*>(moduleBaseAddress + 0x780BD0) + "-acolyte-mp1";
     return version;
 }
 
 void networkVersionDetour(SafetyHookContext& ctx) {
     auto& version = GetNetworkVersion();
-    // The stream insertion already has its text and length on the stack.
+    // ESP + 4 is the string data, ESP + 8 is its length
     reinterpret_cast<uintptr_t*>(ctx.esp)[1] = reinterpret_cast<uintptr_t>(version.data());
     reinterpret_cast<uint*>(ctx.esp)[2] = version.size();
 }
@@ -83,10 +82,8 @@ void __fastcall refreshDetour(NetMenu* menuThis, void*, bool force) {
     auto& elements = menuThis->guiElements;
     if (std::find(elements.begin(), elements.end(), maxPlayersButton) != elements.end()) return;
 
-    size_t index = std::find(elements.begin(), elements.end(), menuThis->hostSteamGameButton) - elements.begin();
-    sdk::UI::AddElement(elements, maxPlayersButton);
-    sdk::UI::AddElement(elements, duplicatePalettesButton);
-    std::rotate(elements.begin() + index, elements.end() - 2, elements.end());
+    auto hostButton = std::find(elements.begin(), elements.end(), menuThis->hostSteamGameButton);
+    elements.insert(hostButton, {maxPlayersButton, duplicatePalettesButton});
 
     GuiElement* rows[] = {
         menuThis->gameNameField, menuThis->privateGameCheckbox, menuThis->customGameCheckbox,
@@ -142,19 +139,10 @@ void __fastcall rightDetour(NetMenu* menuThis, void*, bool repeat) {
     pOriginalRight(menuThis, repeat);
 }
 
-MenuUpdateFn pOriginalStepGuiEnabled = nullptr;
-void __fastcall stepGuiEnabledDetour(NetMenu* menuThis, void*) {
-    pOriginalStepGuiEnabled(menuThis);
-    if (menuThis == hostingMenu) {
-        maxPlayersButton->disabled = menuThis->loading || menuThis->selectingCustomWorld;
-        duplicatePalettesButton->disabled = maxPlayersButton->disabled || supportedPlayers <= 4;
-    }
-}
-
 MenuUpdateFn pOriginalDestroyMenu = nullptr;
 void __fastcall destroyMenuDetour(NetMenu* menuThis, void*) {
     if (menuThis == hostingMenu) {
-        // The menu deletes these buttons with its other elements
+        // Just clear our pointers here, NetMenu::~NetMenu deletes the buttons
         maxPlayersButton = nullptr;
         duplicatePalettesButton = nullptr;
         hostingMenu = nullptr;
@@ -167,31 +155,33 @@ void startServerDetour(SafetyHookContext&) {
 }
 
 void createLobbyDetour(SafetyHookContext& ctx) {
-    // ESP + 4 is the maximum member count passed to CreateLobby.
+    // ESP + 4 is the member limit passed to CreateLobby
     reinterpret_cast<int*>(ctx.esp)[1] = hostedMaxPlayers.load();
 }
 
 void setLobbyMemberLimitDetour(SafetyHookContext& ctx) {
-    // The member limit is already on the stack. The Steam ID is pushed next.
+    // The member limit is already on the stack, the Steam ID is pushed next
     *reinterpret_cast<int*>(ctx.esp) = hostedMaxPlayers.load();
 }
 
 void connectHostLobbyDetour(SafetyHookContext& ctx) {
     Client* client = reinterpret_cast<Client*>(ctx.esi);
     Server* server = client->server;
-    auto lobby = *reinterpret_cast<uint64_t*>(ctx.ebp + 8);
-    if (!server || !lobby || server->state != STATE_RUNNING || server->steamIDLobby.value != lobby) return;
+    auto lobby = client->steamIDLobby.value;
+    if (!server || !lobby || server->state != STATE_RUNNING || server->steamIDLobby.value != lobby)
+        return;
 
-    // CreateLobby already joined the host. Joining again fails for a one-player lobby.
+    // CreateLobby already joins the host, trying again fails with a one-player lobby
     LobbyEnter_t result{lobby, 0, false, 1}; // k_EChatRoomEnterResponseSuccess
     LobbyJoined(client, &result, false);
-    // Retry through processNetworkLogic if the server metadata hasn't arrived yet.
-    if (client->netState == CLIENT_CONNECTING_LOBBY) client->netState = CLIENT_INITIALIZING;
+
+    // Let processNetworkLogic retry if the lobby data hasn't arrived yet
+    if (client->netState == CLIENT_CONNECTING_LOBBY)
+        client->netState = CLIENT_INITIALIZING;
     ctx.eip = moduleBaseAddress + 0x14D0AA;
 }
 
 void checkSteamAdmissionDetour(SafetyHookContext& ctx) {
-    // Continue to the game's accepted or full-server response.
     ctx.eip = moduleBaseAddress + (ctx.ecx < static_cast<uint>(hostedMaxPlayers.load()) ? 0x36B139 : 0x36B0F7);
 }
 
@@ -205,11 +195,12 @@ namespace sdk::Lobby {
     }
 
     int GetSupportedPlayers() {
-        return supportedPlayers;
+        return Multiplayer::maxPlayers;
     }
 
     int GetPlayerLimit() {
-        return (std::min)(supportedPlayers, duplicatePalettes ? static_cast<int>(Multiplayer::maxPlayers) : sdk::PlayerClass::GetPlayableClassCount() * 4);
+        if (duplicatePalettes) return GetSupportedPlayers();
+        return (std::min)(GetSupportedPlayers(), sdk::PlayerClass::GetPlayableClassCount() * 4);
     }
 
     bool GetDuplicatePalettes() {
@@ -238,36 +229,30 @@ namespace sdk::Lobby {
             &leftDetour, reinterpret_cast<void**>(&pOriginalLeft));
         Utils::CreateHook(reinterpret_cast<void*>(moduleBaseAddress + 0x2B9040),
             &rightDetour, reinterpret_cast<void**>(&pOriginalRight));
-        Utils::CreateHook(reinterpret_cast<void*>(moduleBaseAddress + 0x2BA620),
-            &stepGuiEnabledDetour, reinterpret_cast<void**>(&pOriginalStepGuiEnabled));
         Utils::CreateHook(reinterpret_cast<void*>(moduleBaseAddress + 0x2B7ED0),
             &destroyMenuDetour, reinterpret_cast<void**>(&pOriginalDestroyMenu));
 
-        static SafetyHookMid startServerHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x363680), startServerDetour);
-        static SafetyHookMid createLobbyHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x36A6F6), createLobbyDetour);
-        static SafetyHookMid lobbyMemberLimitHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x36AF35), setLobbyMemberLimitDetour);
-        static SafetyHookMid hostLobbyConnectionHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x14CFD4), connectHostLobbyDetour);
-        static SafetyHookMid steamAdmissionHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x36B0F2), checkSteamAdmissionDetour);
-        static SafetyHookMid ipAdmissionHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x36B7C4), checkIpAdmissionDetour);
-        // Vanilla uses the same gameversion filter and rejects a different connection version.
-        static SafetyHookMid lobbyVersionHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x36AEA9), lobbyVersionDetour);
-        static SafetyHookMid lobbyVersionFilterHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x2BB9D6), lobbyVersionFilterDetour);
-        static SafetyHookMid steamVersionHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x14D276), networkVersionDetour);
-        static SafetyHookMid ipVersionHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x14C978), networkVersionDetour);
-        static SafetyHookMid serverVersionHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x36377E), networkVersionDetour);
-        static SafetyHookMid connectionVersionHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x3695DB), networkVersionDetour);
+        static SafetyHookMid startServerHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x363680), startServerDetour);
+        static SafetyHookMid createLobbyHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36A6F6), createLobbyDetour);
+        static SafetyHookMid lobbyMemberLimitHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36AF35), setLobbyMemberLimitDetour);
+        static SafetyHookMid hostLobbyConnectionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x14CFD4), connectHostLobbyDetour);
+        static SafetyHookMid steamAdmissionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36B0F2), checkSteamAdmissionDetour);
+        static SafetyHookMid ipAdmissionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36B7C4), checkIpAdmissionDetour);
+
+        static SafetyHookMid lobbyVersionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36AEA9), lobbyVersionDetour);
+        static SafetyHookMid lobbyVersionFilterHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x2BB9D6), lobbyVersionFilterDetour);
+        static SafetyHookMid steamVersionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x14D276), networkVersionDetour);
+        static SafetyHookMid ipVersionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x14C978), networkVersionDetour);
+        static SafetyHookMid serverVersionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36377E), networkVersionDetour);
+        static SafetyHookMid connectionVersionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x3695DB), networkVersionDetour);
 
         if (!pOriginalRefresh || !pOriginalAction || !pOriginalLeft || !pOriginalRight ||
-            !pOriginalStepGuiEnabled || !pOriginalDestroyMenu || !startServerHook || !createLobbyHook ||
-            !lobbyMemberLimitHook || !hostLobbyConnectionHook || !steamAdmissionHook || !ipAdmissionHook ||
-            !lobbyVersionHook || !lobbyVersionFilterHook || !steamVersionHook || !ipVersionHook ||
-            !serverVersionHook || !connectionVersionHook)
+            !pOriginalDestroyMenu)
             Multiplayer::FailInitialization();
 
-        // All required hooks must be ready before the game starts using the larger arrays.
+        // Install the allocation hooks before changing the loop limits
         if (!Multiplayer::ApplyPlayerLimits() || !Utils::PatchByteAt(moduleBaseAddress + 0x2BAD35, 2, 19))
             Multiplayer::FailInitialization();
-        supportedPlayers = Multiplayer::maxPlayers;
     }
     SDK_REGISTER(InitLobby);
 }

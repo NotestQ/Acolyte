@@ -7,21 +7,25 @@
 static uintptr_t moduleBaseAddress = (uintptr_t)GetModuleHandleA(NULL);
 
 void emptySnapshotFillDetour(SafetyHookContext& ctx) {
-    // Each snapshot allocates 1023 entity states, wait until we actually use it
+    // Wait until we use the snapshot to allocate its 1023 entity states
     Snapshot* snapshot = *reinterpret_cast<Snapshot**>(ctx.esp + 4);
     snapshot->netEntities.clear();
-    snapshot->netEntities.shrink_to_fit(); // clear() alone would keep the allocated memory.
+    snapshot->netEntities.shrink_to_fit();
 }
 
 void allocateSnapshotEntitiesDetour(SafetyHookContext& ctx) {
-    // Allocate the entity states when Server::addEntityToSnapshot first needs them.
     Snapshot* snapshot = *reinterpret_cast<Snapshot**>(ctx.ebp + 8);
     if (snapshot->netEntities.empty())
         snapshot->netEntities.resize(1023);
 }
 
-// These vectors exceed 4 KiB, so use the game's aligned allocation path.
-// It stores the original pointer needed when freeing the vector.
+void initializeSuperlativesDetour(SafetyHookContext& ctx) {
+    // recordGameStats only makes four award lists, but checks every player's run stats
+    auto* superlatives = reinterpret_cast<std::vector<std::vector<Superlative>>*>(ctx.eax);
+    superlatives->resize(Multiplayer::playerSlots);
+}
+
+// Both vectors now exceed 4096 bytes, their destructors expect the game's aligned allocation
 void controlSchemeAllocationDetour(SafetyHookContext& ctx) {
     ctx.eax = Multiplayer::playerSlots;
     ctx.eip = moduleBaseAddress + 0x2077B9;
@@ -33,8 +37,7 @@ void playerInformationAllocationDetour(SafetyHookContext& ctx) {
     ctx.eip = moduleBaseAddress + 0x1712AA;
 }
 
-// The larger end offsets don't fit in the original LEA instructions.
-// Calculate them here and skip the copied three-byte instruction.
+// The new end offset doesn't fit in the original LEA
 void serverConnectionEndDetour(SafetyHookContext& ctx) {
     ctx.eax = ctx.edx + Multiplayer::playerSlots * sizeof(ClientConnectionData*);
     ctx.eip += 3;
@@ -119,40 +122,31 @@ void restoreInventoriesLoopDetour(SafetyHookContext& ctx) {
 }
 
 namespace Multiplayer {
-    bool InitStorage() {
-        static SafetyHookMid snapshotConstructorHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x3626F4), emptySnapshotFillDetour);
-        static SafetyHookMid snapshotResetHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x36BFFD), emptySnapshotFillDetour);
-        static SafetyHookMid snapshotEntitiesHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x36595C), allocateSnapshotEntitiesDetour);
-        static SafetyHookMid controlSchemeAllocationHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x20779A), controlSchemeAllocationDetour);
-        static SafetyHookMid playerInformationAllocationHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x17128D), playerInformationAllocationDetour);
-        static SafetyHookMid serverConnectionEndHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x363BA2), serverConnectionEndDetour);
-        static SafetyHookMid connectionAllocationEndHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x372287), connectionAllocationEndDetour);
-        static SafetyHookMid playerMenuEndHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x1C0CCE), playerMenuEndDetour);
-        static SafetyHookMid playerMenuAllocationEndHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x1CC2DE), playerMenuAllocationEndDetour);
-        static SafetyHookMid playerResetEndHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x1C137B), playerResetEndDetour);
-        static SafetyHookMid runStatsEndHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x1C161E), runStatsEndDetour);
-        static SafetyHookMid runStatsAllocationEndHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x3BEAA7), runStatsAllocationEndDetour);
-        static SafetyHookMid menuClassEndHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x307D30), menuClassEndDetour);
-        static SafetyHookMid menuPaletteEndHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x307D80), menuPaletteEndDetour);
-        static SafetyHookMid inputTimerEndHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x1FD4AF), inputTimerEndDetour);
-        static SafetyHookMid inputTimerResetEndHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x1FD50F), inputTimerEndDetour);
-        static SafetyHookMid bonfireHealingEndHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0xFF747), bonfireHealingEndDetour);
-        static SafetyHookMid pendingConnectionLoopHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x363C2F), pendingConnectionLoopDetour);
-        static SafetyHookMid sendPlayerListLoopHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x36560B), sendPlayerListLoopDetour);
-        static SafetyHookMid findSteamConnectionLoopHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x36B071), findSteamConnectionLoopDetour);
-        static SafetyHookMid affinityPlayersLoopHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x36FE63), affinityPlayersLoopDetour);
-        static SafetyHookMid serverMessagePlayersLoopHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x37034C), serverMessagePlayersLoopDetour);
-        static SafetyHookMid restorePlayersLoopHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x1D23BD), restorePlayersLoopDetour);
-        static SafetyHookMid restoreInventoriesLoopHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x1D24D5), restoreInventoriesLoopDetour);
-
-        return snapshotConstructorHook && snapshotResetHook && snapshotEntitiesHook &&
-               controlSchemeAllocationHook && playerInformationAllocationHook && serverConnectionEndHook &&
-               connectionAllocationEndHook && playerMenuEndHook && playerMenuAllocationEndHook &&
-               playerResetEndHook && runStatsEndHook && runStatsAllocationEndHook &&
-               menuClassEndHook && menuPaletteEndHook && inputTimerEndHook &&
-               inputTimerResetEndHook && bonfireHealingEndHook && pendingConnectionLoopHook &&
-               sendPlayerListLoopHook && findSteamConnectionLoopHook && affinityPlayersLoopHook &&
-               serverMessagePlayersLoopHook && restorePlayersLoopHook && restoreInventoriesLoopHook;
+    void InitStorage() {
+        static SafetyHookMid snapshotConstructorHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x3626F4), emptySnapshotFillDetour);
+        static SafetyHookMid snapshotResetHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36BFFD), emptySnapshotFillDetour);
+        static SafetyHookMid snapshotEntitiesHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36595C), allocateSnapshotEntitiesDetour);
+        static SafetyHookMid superlativesHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1CA2A8), initializeSuperlativesDetour);
+        static SafetyHookMid controlSchemeAllocationHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x20779A), controlSchemeAllocationDetour);
+        static SafetyHookMid playerInformationAllocationHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x17128D), playerInformationAllocationDetour);
+        static SafetyHookMid serverConnectionEndHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x363BA2), serverConnectionEndDetour);
+        static SafetyHookMid connectionAllocationEndHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x372287), connectionAllocationEndDetour);
+        static SafetyHookMid playerMenuEndHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1C0CCE), playerMenuEndDetour);
+        static SafetyHookMid playerMenuAllocationEndHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1CC2DE), playerMenuAllocationEndDetour);
+        static SafetyHookMid playerResetEndHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1C137B), playerResetEndDetour);
+        static SafetyHookMid runStatsEndHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1C161E), runStatsEndDetour);
+        static SafetyHookMid runStatsAllocationEndHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x3BEAA7), runStatsAllocationEndDetour);
+        static SafetyHookMid menuClassEndHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x307D30), menuClassEndDetour);
+        static SafetyHookMid menuPaletteEndHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x307D80), menuPaletteEndDetour);
+        static SafetyHookMid inputTimerEndHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1FD4AF), inputTimerEndDetour);
+        static SafetyHookMid inputTimerResetEndHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1FD50F), inputTimerEndDetour);
+        static SafetyHookMid bonfireHealingEndHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0xFF747), bonfireHealingEndDetour);
+        static SafetyHookMid pendingConnectionLoopHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x363C2F), pendingConnectionLoopDetour);
+        static SafetyHookMid sendPlayerListLoopHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36560B), sendPlayerListLoopDetour);
+        static SafetyHookMid findSteamConnectionLoopHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36B071), findSteamConnectionLoopDetour);
+        static SafetyHookMid affinityPlayersLoopHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36FE63), affinityPlayersLoopDetour);
+        static SafetyHookMid serverMessagePlayersLoopHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x37034C), serverMessagePlayersLoopDetour);
+        static SafetyHookMid restorePlayersLoopHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1D23BD), restorePlayersLoopDetour);
+        static SafetyHookMid restoreInventoriesLoopHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1D24D5), restoreInventoriesLoopDetour);
     }
-
 }

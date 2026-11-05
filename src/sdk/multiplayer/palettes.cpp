@@ -5,8 +5,6 @@
 #include <Vagante/stage.h>
 #include <Vagante/game.h>
 #include <safetyhook.hpp>
-#include <algorithm>
-#include <array>
 #include <map>
 #include <random>
 
@@ -28,48 +26,46 @@ struct PlayerTextureCache {
     std::map<Player*, std::weak_ptr<Entity>> players;
 };
 
-// Server cleanup runs on another thread and must not release the client's textures.
-static thread_local std::map<std::vector<std::shared_ptr<Player>>*, PlayerTextureCache> textureCaches;
+static std::map<std::vector<std::shared_ptr<Player>>*, PlayerTextureCache> textureCaches;
 
-static std::array<float, 3> PlayerColor(unsigned seed) {
-    // Use the same seed on every client, including after reconnecting.
+static sf::Color PlayerColor(unsigned seed) {
     std::mt19937 random(seed);
-    return {float(64 + random() % 192), float(64 + random() % 192), float(64 + random() % 192)};
+    return {uchar(64 + random() % 192), uchar(64 + random() % 192), uchar(64 + random() % 192), 255};
 }
 
-static void BlendOverlay(unsigned char* pixel, std::array<float, 3>& tint) {
-    for (unsigned channel = 0; channel < 3; ++channel) {
-        float base = pixel[channel];
-        float color = base < 128 ? 2 * base * tint[channel] / 255 :
-            255 - 2 * (255 - base) * (255 - tint[channel]) / 255;
-        pixel[channel] = static_cast<unsigned char>(std::clamp(color, 0.0f, 255.0f) + 0.5f);
-    }
+static uchar BlendOverlay(uchar base, uchar tint) {
+    float color = base < 128 ? 2.0f * base * tint / 255 :
+        255 - 2.0f * (255 - base) * (255 - tint) / 255;
+    return static_cast<uchar>(color + 0.5f);
 }
 
 static void TintSprite(Sprite& sprite, unsigned seed, bool tint, PlayerTextureCache& cache) {
     if (sprite.m_textureName.empty()) return;
     if (!tint) {
         auto original = cache.originals.find(sprite.texture);
-        if (original != cache.originals.end()) sprite.texture = original->second;
+        if (original != cache.originals.end())
+            sprite.texture = original->second;
         return;
     }
-    // LoadSpriteTexture also sets the sprite's rows, columns and texture coordinates.
+    // lazyLoadTexture sets the sprite's texture coordinates and frame counts too
     LoadSpriteTexture(&sprite);
     if (!sprite.texture) return;
     auto original = cache.originals.find(sprite.texture);
     sf::Texture* source = original == cache.originals.end() ? sprite.texture : original->second;
     auto key = std::make_pair(source, seed);
     auto found = cache.textures.find(key);
+    // Reloading a texture can change m_cacheId without changing its pointer
     if (found == cache.textures.end() || found->second.sourceVersion != source->m_cacheId) {
-        // Texture overrides can change the pixels without changing the address.
         sprite.texture = source;
         sf::Image image{};
         sdk::Resources::CopyToImage(source, &image);
         if (image.m_pixels.empty()) return;
         auto color = PlayerColor(seed);
         for (size_t i = 0; i + 3 < image.m_pixels.size(); i += 4) {
-            if (image.m_pixels[i + 3])
-                BlendOverlay(image.m_pixels.data() + i, color);
+            if (!image.m_pixels[i + 3]) continue;
+            image.m_pixels[i] = BlendOverlay(image.m_pixels[i], color.r);
+            image.m_pixels[i + 1] = BlendOverlay(image.m_pixels[i + 1], color.g);
+            image.m_pixels[i + 2] = BlendOverlay(image.m_pixels[i + 2], color.b);
         }
 
         bool created = found == cache.textures.end();
@@ -140,6 +136,7 @@ void tintPlayerDetour(SafetyHookContext& ctx) {
             break;
         }
     }
+    // Use the same seed on every client so they agree on the player's color
     unsigned seed = 0x736B656C + player->playerIndex + character * 256 + palette * 65536;
     auto& cache = textureCaches[player->level->players];
     cache.players[player] = player->weak_from_this();
@@ -148,16 +145,23 @@ void tintPlayerDetour(SafetyHookContext& ctx) {
 
 CleanUpFn pOriginalCleanUp = nullptr;
 void __fastcall cleanUpTexturesDetour(GameEngine* engineThis, void*) {
+    // If this is the server just call the original cleanup, it has no tinted textures to free
+    if (engineThis->networked && !engineThis->clientSide) {
+        pOriginalCleanUp(engineThis);
+        return;
+    }
+
     auto found = textureCaches.find(&engineThis->players);
     if (found != textureCaches.end()) {
         auto& cache = found->second;
-        // A mod may still hold a player after the engine releases it
-        for (auto& [player, owner] : cache.players) {
-            if (auto alive = owner.lock())
-                TintPlayerSprites(player, 0, false, cache);
+        // Put the original textures back before deleting the tinted ones, a mod might still be holding the player
+        for (auto& player : cache.players) {
+            auto owner = player.second.lock();
+            if (owner)
+                TintPlayerSprites(player.first, 0, false, cache);
         }
-        for (auto& [key, tinted] : cache.textures)
-            sdk::Resources::TextureDestructor(&tinted.texture);
+        for (auto& texture : cache.textures)
+            sdk::Resources::TextureDestructor(&texture.second.texture);
         textureCaches.erase(found);
     }
     pOriginalCleanUp(engineThis);
@@ -170,9 +174,8 @@ namespace Multiplayer {
             &loadPlayerSpritesDetour, reinterpret_cast<void**>(&pOriginalLoadClassSprites));
         Utils::CreateHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1C1050),
             &cleanUpTexturesDetour, reinterpret_cast<void**>(&pOriginalCleanUp));
-        // Apply the tint after network updates and other mods have changed the sprites.
-        static SafetyHookMid drawHook = safetyhook::create_mid(reinterpret_cast<void*>(moduleBaseAddress + 0x2F21B0), tintPlayerDetour);
-        return pOriginalLoadClassSprites && pOriginalCleanUp && drawHook;
+        // Network updates and other mods can replace the sprites, tint them afterwards
+        static SafetyHookMid drawHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x2F21B0), tintPlayerDetour);
+        return pOriginalLoadClassSprites && pOriginalCleanUp;
     }
-
 }

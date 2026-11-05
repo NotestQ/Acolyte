@@ -4,8 +4,6 @@
 #include <sdk_registry.h>
 #include <windows.h>
 #include <safetyhook.hpp>
-#include <MinHook.h>
-#include <iostream>
 #include <algorithm>
 
 static Logger textureLogger("Acolyte");
@@ -23,10 +21,10 @@ namespace sdk::Resources {
             return false;
         }
 
-        const std::string key = NormalizeTexturePath(texturePath);
+        std::string key = NormalizeTexturePath(texturePath);
         auto existing = TextureDataMap.find(key);
         if (existing != TextureDataMap.end() && !existing->second.images.empty()) {
-            const auto size = existing->second.images.front().m_size;
+            auto size = existing->second.images.front().m_size;
             if (size.x != chunkSize || size.y != chunkSize) {
                 textureLogger.LogError("Texture already initialized with a different chunk size: " + key);
                 return false;
@@ -72,7 +70,7 @@ namespace sdk::Resources {
             return false;
         }
 
-        const std::string key = NormalizeTexturePath(texturePath);
+        std::string key = NormalizeTexturePath(texturePath);
         if (!InitTextureData(key, chunkSize))
             return false;
 
@@ -192,10 +190,11 @@ namespace sdk::Resources {
     static sf::Texture* __cdecl GetTextureDetour(std::string filePath, bool param_2) {
         // Spammy but useful, maybe when we get debug levels
         textureLogger.LogDebug("Requested path: " + filePath + " " + std::to_string(param_2));
-        const std::string key = NormalizeTexturePath(filePath);
-        if (TextureDataMap.contains(key)) {
+        std::string key = NormalizeTexturePath(filePath);
+        auto texture = TextureDataMap.find(key);
+        if (texture != TextureDataMap.end()) {
             //textureLogger.LogWarning("File path present, returning from texture data map...");
-            return &TextureDataMap[key].texture;
+            return &texture->second.texture;
         }
 
         return pOriginalGetTexture(filePath, param_2);

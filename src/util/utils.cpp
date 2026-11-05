@@ -2,10 +2,27 @@
 #include <Acolyte/utils.h>
 #include <MinHook.h>
 #include <stacktrace>
+#include <filesystem>
 
 static Logger utilsLogger("Acolyte");
 
 namespace Utils {
+    std::optional<std::string> CreateTemporaryFile(std::string directory) {
+        if (directory.empty()) directory = ".";
+        std::error_code error;
+        std::filesystem::create_directories(directory, error);
+        if (error) {
+            utilsLogger.LogError("Couldn't create temporary directory " + directory + ": " + error.message());
+            return std::nullopt;
+        }
+        char path[MAX_PATH]{};
+        if (!GetTempFileNameA(directory.c_str(), "aco", 0, path)) {
+            utilsLogger.LogError("Couldn't create temporary file in " + directory + ": " + std::to_string(GetLastError()));
+            return std::nullopt;
+        }
+        return std::string(path);
+    }
+
     void CreateHook(LPVOID pTarget, LPVOID pDetour, LPVOID* ppOriginal) {
         MH_STATUS hook = MH_CreateHook(pTarget, pDetour, ppOriginal);
         if (hook != MH_OK) {
@@ -19,6 +36,17 @@ namespace Utils {
             MH_RemoveHook(pTarget);
             if (ppOriginal) *ppOriginal = nullptr;
         }
+    }
+
+    SafetyHookMid CreateMidHook(void* target, safetyhook::MidHookFn detour) {
+        auto hook = SafetyHookMid::create(target, detour);
+        if (!hook) {
+            utilsLogger.LogError("Couldn't create mid hook at " + std::to_string(reinterpret_cast<uintptr_t>(target)) + "! Status: ",
+                std::to_string(hook.error().type));
+            ExitProcess(1);
+        }
+
+        return std::move(*hook);
     }
 
     // Rewrite memory directly at address
