@@ -8,6 +8,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdint>
+#include "core.h"
 #include "multiplayer/multiplayer.h"
 
 static uintptr_t moduleBaseAddress = (uintptr_t)GetModuleHandleA(NULL);
@@ -24,27 +25,6 @@ using MenuUpdateFn = void(__thiscall*)(NetMenu* menuThis);
 
 using LobbyJoinedFn = void(__thiscall*)(Client* clientThis, LobbyEnter_t* result, bool failed);
 static LobbyJoinedFn LobbyJoined = nullptr;
-
-static std::string& GetNetworkVersion() {
-    // Saves use the game's version string too, keep a separate copy for multiplayer
-    static std::string version = *reinterpret_cast<std::string*>(moduleBaseAddress + 0x780BD0) + "-acolyte-mp1";
-    return version;
-}
-
-void networkVersionDetour(SafetyHookContext& ctx) {
-    auto& version = GetNetworkVersion();
-    // ESP + 4 is the string data, ESP + 8 is its length
-    reinterpret_cast<uintptr_t*>(ctx.esp)[1] = reinterpret_cast<uintptr_t>(version.data());
-    reinterpret_cast<uint*>(ctx.esp)[2] = version.size();
-}
-
-void lobbyVersionDetour(SafetyHookContext& ctx) {
-    ctx.eax = reinterpret_cast<uintptr_t>(GetNetworkVersion().data());
-}
-
-void lobbyVersionFilterDetour(SafetyHookContext& ctx) {
-    ctx.edx = reinterpret_cast<uintptr_t>(GetNetworkVersion().data());
-}
 
 static void UpdateMaxPlayersText() {
     if (maxPlayersButton)
@@ -150,8 +130,10 @@ void __fastcall destroyMenuDetour(NetMenu* menuThis, void*) {
     pOriginalDestroyMenu(menuThis);
 }
 
-void startServerDetour(SafetyHookContext&) {
+void startServerDetour(SafetyHookContext& ctx) {
+    Server* server = reinterpret_cast<Server*>(ctx.edi);
     hostedMaxPlayers.store((std::min)(maxPlayers, sdk::Lobby::GetPlayerLimit()));
+    Multiplayer::vanillaHost = maxPlayers == 4 && !duplicatePalettes && !modsLoaded && !server->gameEngine.customRoomDatabase;
 }
 
 void createLobbyDetour(SafetyHookContext& ctx) {
@@ -232,19 +214,12 @@ namespace sdk::Lobby {
         Utils::CreateHook(reinterpret_cast<void*>(moduleBaseAddress + 0x2B7ED0),
             &destroyMenuDetour, reinterpret_cast<void**>(&pOriginalDestroyMenu));
 
-        static SafetyHookMid startServerHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x363680), startServerDetour);
+        static SafetyHookMid startServerHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36371E), startServerDetour);
         static SafetyHookMid createLobbyHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36A6F6), createLobbyDetour);
         static SafetyHookMid lobbyMemberLimitHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36AF35), setLobbyMemberLimitDetour);
         static SafetyHookMid hostLobbyConnectionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x14CFD4), connectHostLobbyDetour);
         static SafetyHookMid steamAdmissionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36B0F2), checkSteamAdmissionDetour);
         static SafetyHookMid ipAdmissionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36B7C4), checkIpAdmissionDetour);
-
-        static SafetyHookMid lobbyVersionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36AEA9), lobbyVersionDetour);
-        static SafetyHookMid lobbyVersionFilterHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x2BB9D6), lobbyVersionFilterDetour);
-        static SafetyHookMid steamVersionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x14D276), networkVersionDetour);
-        static SafetyHookMid ipVersionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x14C978), networkVersionDetour);
-        static SafetyHookMid serverVersionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36377E), networkVersionDetour);
-        static SafetyHookMid connectionVersionHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x3695DB), networkVersionDetour);
 
         if (!pOriginalRefresh || !pOriginalAction || !pOriginalLeft || !pOriginalRight ||
             !pOriginalDestroyMenu)

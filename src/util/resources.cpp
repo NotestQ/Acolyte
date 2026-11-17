@@ -134,7 +134,7 @@ namespace sdk::Resources {
             }
         }
 
-        textureLogger.LogDebug("Image separated into " + std::to_string(returnVector.size()) + " chunks...");
+        //textureLogger.LogDebug("Image separated into " + std::to_string(returnVector.size()) + " chunks...");
         return returnVector;
     }
 
@@ -147,9 +147,9 @@ namespace sdk::Resources {
 
         returnImage.m_size = sf::Vector2<uint>(width, stitchHeight);
         returnImage.m_pixels.resize(width * stitchHeight * 4, 0);
-        textureLogger.LogDebug("Stitching " + std::to_string(images.size()) + 
-            ((images.size() > 1) ? " chunks" : " chunk") + " into one " + 
-            std::to_string(width) + " by " + std::to_string(stitchHeight) + " image");
+        //textureLogger.LogDebug("Stitching " + std::to_string(images.size()) +
+        //    ((images.size() > 1) ? " chunks" : " chunk") + " into one " +
+        //    std::to_string(width) + " by " + std::to_string(stitchHeight) + " image");
         
         for (unsigned int idx = 0; idx < images.size(); ++idx) {
             const sf::Image& chunk = images[idx];
@@ -189,7 +189,7 @@ namespace sdk::Resources {
 
     static sf::Texture* __cdecl GetTextureDetour(std::string filePath, bool param_2) {
         // Spammy but useful, maybe when we get debug levels
-        textureLogger.LogDebug("Requested path: " + filePath + " " + std::to_string(param_2));
+        //textureLogger.LogDebug("Requested path: " + filePath + " " + std::to_string(param_2));
         std::string key = NormalizeTexturePath(filePath);
         auto texture = TextureDataMap.find(key);
         if (texture != TextureDataMap.end()) {

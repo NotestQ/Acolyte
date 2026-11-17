@@ -1,7 +1,7 @@
 #include <Acolyte/logger.h>
 #include <Acolyte/utils.h>
 #include <Acolyte/playerclass.h>
-#include <Vagante/game.h>
+#include <Vagante/client.h>
 #include <safetyhook.hpp>
 #include <algorithm>
 #include <cstdint>
@@ -206,6 +206,23 @@ bool __fastcall loadAllPlayersDetour(GameSave* saveThis, void*, std::string* fil
     return true;
 }
 
+void checkLobbySaveDetour(SafetyHookContext& ctx) {
+    if (!Multiplayer::vanillaClient || !static_cast<uchar>(ctx.eax)) return;
+    Client* client = *reinterpret_cast<Client**>(ctx.ebp - 0x8C);
+    if (!client->gameEngine.networked) return;
+
+    // Don't offer saves with modded classes or extra players in a vanilla lobby
+    // Client::loadGameSaveData checks AL before adding the save to the list
+    auto& save = client->gameSave;
+    for (auto& player : save.m_playerData) {
+        if (player.playerClass > NUM_PLAYER_CLASSES) {
+            ctx.eax = 0;
+            return;
+        }
+    }
+    if (loadedExtras.contains(save.m_loadedFileName)) ctx.eax = 0;
+}
+
 InitializeSaveFn pOriginalInitializeSave = nullptr;
 void __fastcall initializeAllPlayersDetour(GameSave* saveThis, void*, GameEngine* engine) {
     // The load menu copies GameSave, use the filename to find the extra players
@@ -251,6 +268,7 @@ namespace Multiplayer {
         SaveConstructor = reinterpret_cast<SaveConstructorFn>(moduleBaseAddress + 0x14A880);
         SaveDestructor = reinterpret_cast<SaveDestructorFn>(moduleBaseAddress + 0x14AB20);
 
+        static SafetyHookMid lobbySaveHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x16957F), checkLobbySaveDetour);
         static SafetyHookMid captureSlotsHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1D0284), captureExtraSlotsDetour);
         static SafetyHookMid restorePlayerHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1D21B0), restoreExtraPlayerDetour);
         static SafetyHookMid restoreInventoryHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1D23F7), restoreExtraInventoryDetour);

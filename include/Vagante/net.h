@@ -4,6 +4,20 @@
 #include <Vagante/sfml.h>
 #include <map>
 
+struct Message {
+    int compressedSize;
+    int uncompressedSize;
+    std::vector<char> outBuffer;
+    char* buffer;
+    uint bufferSize;
+    bool overflowed;
+    int bit;
+    int maxBit;
+    int uncompressBit;
+    bool usesVector;
+    uint readPos;
+};
+
 struct NetGameEvent {
     NetGameEventType eventType;
     int ignorePlayerIndex;

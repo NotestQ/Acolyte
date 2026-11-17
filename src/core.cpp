@@ -9,6 +9,7 @@
 
 namespace fs = std::filesystem;
 
+bool modsLoaded = false;
 static Logger mainLogger("Acolyte");
 static const uintptr_t moduleBaseAddress = (uintptr_t)GetModuleHandleA(NULL);
 static const fs::path cwd = fs::current_path();
@@ -72,7 +73,10 @@ DWORD WINAPI init() {
             }
             mainLogger.LogDebug("Loading " + manifest.name);
             for (const auto& dll : fs::directory_iterator(manifest.manifest_path.parent_path())) {
-                if (dll.path().extension() == ".dll" && !LoadLibraryA(dll.path().string().c_str()))
+                if (dll.path().extension() != ".dll") continue;
+                if (LoadLibraryA(dll.path().string().c_str()))
+                    modsLoaded = true;
+                else
                     mainLogger.LogError("Could not load " + dll.path().string() + ": Windows error " + std::to_string(GetLastError()));
             }
         }

@@ -229,7 +229,6 @@ namespace Multiplayer {
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x362D5A, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x36B3EF, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x36BC6A, 2, playerSlots);
-        success &= Utils::PatchByteAt(moduleBaseAddress + 0x36C149, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x36C75A, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x36EF68, 2, playerSlots);
         success &= Utils::PatchByteAt(moduleBaseAddress + 0x3701AC, 2, playerSlots);
@@ -310,8 +309,7 @@ namespace Multiplayer {
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x169F37 + 2), &playerInformationBytes, sizeof(playerInformationBytes));
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x171409 + 2), &playerInformationBytes, sizeof(playerInformationBytes));
 
-        // Client: read all players and update their names and avatars
-        success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x14E7A8 + 2), &playerInformationBytes, sizeof(playerInformationBytes));
+        // Client: update player names and avatars
         success &= Utils::PatchMemory(reinterpret_cast<void*>(moduleBaseAddress + 0x14D817 + 2), &playerInformationBytes, sizeof(playerInformationBytes));
 
         // Give each player a healing slot at the bonfire
@@ -369,6 +367,7 @@ namespace Multiplayer {
 
         InitGameplay();
         InitStorage();
+        InitProtocol();
 
         Utils::CreateHook(reinterpret_cast<void*>(moduleBaseAddress + 0x30E4A0),
             &selectVisibleHudDetour, reinterpret_cast<void**>(&pOriginalDrawHud));

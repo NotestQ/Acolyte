@@ -97,10 +97,6 @@ void pendingConnectionLoopDetour(SafetyHookContext& ctx) {
     ctx.eip = moduleBaseAddress + (ctx.esi < Multiplayer::playerSlots * sizeof(ClientConnectionData*) ? 0x363BE0 : 0x363C34);
 }
 
-void sendPlayerListLoopDetour(SafetyHookContext& ctx) {
-    ctx.eip = moduleBaseAddress + (ctx.ebx < Multiplayer::playerSlots * sizeof(ClientConnectionData*) ? 0x365550 : 0x365614);
-}
-
 void findSteamConnectionLoopDetour(SafetyHookContext& ctx) {
     ctx.eip = moduleBaseAddress + (ctx.eax < Multiplayer::playerSlots * sizeof(ClientConnectionData*) ? 0x36B051 : 0x36B076);
 }
@@ -142,7 +138,6 @@ namespace Multiplayer {
         static SafetyHookMid inputTimerResetEndHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x1FD50F), inputTimerEndDetour);
         static SafetyHookMid bonfireHealingEndHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0xFF747), bonfireHealingEndDetour);
         static SafetyHookMid pendingConnectionLoopHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x363C2F), pendingConnectionLoopDetour);
-        static SafetyHookMid sendPlayerListLoopHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36560B), sendPlayerListLoopDetour);
         static SafetyHookMid findSteamConnectionLoopHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36B071), findSteamConnectionLoopDetour);
         static SafetyHookMid affinityPlayersLoopHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x36FE63), affinityPlayersLoopDetour);
         static SafetyHookMid serverMessagePlayersLoopHook = Utils::CreateMidHook(reinterpret_cast<void*>(moduleBaseAddress + 0x37034C), serverMessagePlayersLoopDetour);
